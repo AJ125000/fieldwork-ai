@@ -12,6 +12,8 @@
   display: flex;
   flex-direction: column;
   background: var(--fw-surface-canvas);
+  padding-bottom: 108px;
+  background-image: radial-gradient(ellipse at 5% 0%,#FFFFFFA8,transparent 55%);
 }
 
 @media (min-width: 431px) {

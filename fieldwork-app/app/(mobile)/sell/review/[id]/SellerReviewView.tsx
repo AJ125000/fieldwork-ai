@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { BottomNav } from "@/components/BottomNav";
 import { Button } from "@/components/Button";
 import { Crop } from "@/components/Crop";
 import { AIActivity } from "@/components/AIActivity";
+import { GarmentGallery } from "@/components/GarmentGallery";
 import { addSellerEvidence, evidenceUrl, getSellerDraft, itemName, publishSellerDraft, saveSellerDeclarations,
   saveSellerPrice, sentence, yen, words, type SellerDraft, type SellerIssue } from "@/lib/api";
 import { readDraftState, useDraftState } from "@/lib/useDraftState";
@@ -27,6 +28,7 @@ export function SellerReviewView({ id }: { id: string }) {
   const [ack, setAck] = useDraftState(`fw.seller.${id}.ack`, false, false);
   const [busy, setBusy] = useDraftState(`fw.seller.${id}.busy`, "", false);
   const [error, setError] = useDraftState(`fw.seller.${id}.error`, "");
+  const [stage, setStage] = useState(0);
   const [askingPrice, setAskingPrice] = useDraftState(`fw.seller.${id}.askingPrice`, "");
   const [negotiation, setNegotiation] = useDraftState(`fw.seller.${id}.negotiation`, false);
   const [minimum, setMinimum] = useDraftState(`fw.seller.${id}.minimum`, "", false);
@@ -62,6 +64,7 @@ export function SellerReviewView({ id }: { id: string }) {
   return <>
     <TopBar title="Review seller draft" backHref="/sell" />
     <main className={styles.main}>
+      <div className="fw-stage-nav" role="group" aria-label="Review stages">{["Review evidence", "Disclose & add", "Publish"].map((label,i)=><button key={label} aria-pressed={stage===i} onClick={()=>setStage(i)}><span>{String(i+1).padStart(2,"0")}</span>{label}</button>)}</div>
       <section className={styles.section}>
         <p className="t-overline">{published ? "Published" : "Draft · not available to buyers"}</p>
         <h1 className="t-heading-l">{itemName(draft.record)}</h1>
@@ -69,7 +72,9 @@ export function SellerReviewView({ id }: { id: string }) {
       </section>
       {error && <p role="alert" className={styles.err}>{error}</p>}
       {busy && <p role="status" className="t-body-s">{busy}</p>}
-      <section className={styles.card}>
+      <p className="fw-disclosure" role="status">{published?"Published record":dirty?"Unsaved condition changes · save before adding evidence or publishing":"Current changes saved"}</p>
+      {stage===0&&<GarmentGallery record={draft.record}/>}
+      <section className={styles.card} hidden={stage!==0}>
         <h2 className="t-heading-s">What the images show</h2>
         <p className="t-body-s t-secondary">These observations are limited to the supplied views. Your disclosures remain separate.</p>
         {draft.record.claims.filter(c => c.lane !== "declared").map(c => <div className={styles.item} key={c.id}>
@@ -77,7 +82,7 @@ export function SellerReviewView({ id }: { id: string }) {
           <div className={styles.thumbs}>{c.evidence.slice(0, 2).map((box, i) => <Crop key={i} itemId={id} box={box} label={box.frame_id} />)}</div>
         </div>)}
       </section>
-      <section className={styles.card}>
+      <section className={styles.card} hidden={stage!==1}>
         <h2 className="t-heading-s">What do you know about its condition?</h2>
         <label className="t-label" htmlFor="seller-answer">Known issues</label>
         <select id="seller-answer" className={styles.field} disabled={locked} value={answer} onChange={e => {
@@ -101,7 +106,7 @@ export function SellerReviewView({ id }: { id: string }) {
         {answer === "issues_reported" && <Button variant="secondary" disabled={locked || issues.length >= 20} onClick={() => setIssues(current => [...current, { code: "other", region: "whole", description: "" }])}>Add another issue</Button>}
         <Button disabled={locked || !valid || !dirty} onClick={() => action("Saving seller disclosures…", () => saveSellerDeclarations(id, draft.revision, answer as NonNullable<SellerDraft["answer"]>, issues))}>Save condition answer</Button>
       </section>
-      <section className={styles.card}>
+      <section className={styles.card} hidden={stage!==1}>
         <h2 className="t-heading-s">Additional evidence to capture</h2>
         <ul>{draft.guidance.map((text, i) => <li className="t-body-s" key={i}>{text}</li>)}</ul>
         <label className="t-label" htmlFor="seller-closeups">Close-up and context photos</label>
@@ -115,7 +120,7 @@ export function SellerReviewView({ id }: { id: string }) {
           if (next) { setPhotos([]); setVideo(null); }
         }}>Add evidence and reinspect</Button>
       </section>
-      <section className={styles.card}>
+      <section className={styles.card} hidden={stage!==2}>
         <h2 className="t-heading-s">Your asking price</h2>
         <p className="t-body-s t-secondary">Set the price in INR. No automatic estimate or currency conversion is used. Condition grades describe the garment only.</p>
         <label className="t-label" htmlFor="asking-price">Asking price (INR)</label>
@@ -127,7 +132,7 @@ export function SellerReviewView({ id }: { id: string }) {
         {draft.asking_price && <p className="t-body-s">Saved asking price: {yen(draft.asking_price, "INR")}.</p>}
         <Button disabled={!!busy || (published && !!draft.asking_price) || dirty || !priceDirty || !priceValid} onClick={() => action("Saving seller price…", () => saveSellerPrice(id, draft.revision, Number(askingPrice), negotiation, negotiation ? Number(minimum) : undefined))}>Save asking price</Button>
       </section>
-      <section className={styles.card}>
+      <section className={styles.card} hidden={stage!==2}>
         <h2 className="t-heading-s">Limitations buyers will see</h2>
         <ul className={styles.bullets}>{draft.limitations.map((text, i) => <li key={i} className="t-body-s">{sentence(text)}</li>)}</ul>
         <p className="t-body-s">{draft.record.listing_text_en}</p>
@@ -140,7 +145,9 @@ export function SellerReviewView({ id }: { id: string }) {
         </>}
         {published && <Button href={`/pass/${id}`}>Open published Pass</Button>}
       </section>
-      <section className={styles.card}>
+      {stage<2&&<Button fullWidth disabled={stage===1&&(dirty||!draft.answer)} onClick={()=>setStage(stage+1)}>{stage===0?"Continue to disclosures":"Preview publication"}</Button>}
+      {stage>0&&<Button variant="tertiary" onClick={()=>setStage(stage-1)}>Previous step</Button>}
+      <section className={styles.card} hidden={stage!==2}>
         <h2 className="t-heading-s">Capture history</h2>
         {draft.attempts.map(attempt => <div className={styles.item} key={attempt.id}>
           <p className="t-body-s">{new Date(attempt.created_at).toLocaleString()} · {words(attempt.status)}</p>

@@ -1,6 +1,6 @@
 /* Typed client for the Fieldwork FastAPI service (fieldwork-ai/fieldwork/api.py). */
 
-export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/$/, "");
+export const API_BASE = (process.env.NEXT_PUBLIC_FIELDWORK_PREVIEW === "1" ? "/api/preview" : process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/$/, "");
 
 export type Lane = "shown" | "measured" | "declared" | "cant_judge";
 export type Severity = "none" | "minor" | "major";
@@ -125,7 +125,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API_BASE}${path}`, init);
   } catch {
-    throw new ApiError(0, "Can't reach the Fieldwork service. Check that it is running.");
+    throw new ApiError(0, "Can't reach the Fieldwork service. It may be waking up or busy; wait 30 seconds and try again.");
   }
   if (!res.ok) {
     let msg = res.statusText;
@@ -158,6 +158,7 @@ function form(fields: Record<string, string>, video?: Blob | null, photos?: File
 
 export const getRecord = (id: string) => call<ConditionRecord>(`/records/${encodeURIComponent(id)}`);
 export const getListing = (id: string) => call<Listing>(`/listings/${encodeURIComponent(id)}`);
+export const searchGarments = () => call<SearchCard[]>("/search");
 export const recordUrl = (id: string) => `${API_BASE}/records/${encodeURIComponent(id)}`;
 export const ask = (item_id: string, question: string) => call<Answer>("/ask", json({ item_id, question }));
 export const agentChat = (session_id: string, message: string) => call<AgentReply>("/agent/chat", json({ session_id, message }));
@@ -225,9 +226,21 @@ export function cropUrl(itemId: string, serverPath: string | null | undefined): 
 /* ---------- small helpers ---------- */
 export const yen = (n: number, cur = "INR") => new Intl.NumberFormat("en-IN", {
   style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
+export const band = (b: [number, number] | null, cur = "INR") => (b ? b[0] === b[1] ? yen(b[0], cur) : `${yen(b[0], cur)}–${yen(b[1], cur)}` : "No estimate");
 export const gradeRange = (g: number[]) =>
   g.length ? (Math.min(...g) === Math.max(...g) ? `Grade ${g[0]} of 5` : `Grade ${Math.min(...g)}–${Math.max(...g)} of 5`) : "Grade not set";
 export const words = (s: string) => s.replace(/_/g, " ");
+/* Plain-English text for backend enum values (enums themselves are unchanged). */
+export const issueStatusText = (s: string) => ({ processing: "We are checking the photos", awaiting_review: "Waiting for a person to check", needs_evidence: "We need one more photo from you", resolved: "Decided" } as Record<string, string>)[s] ?? words(s);
+export const paymentStatusText = (s: string) => ({ held: "Simulated payment on hold until you accept delivery or a person checks an issue", released: "Simulated: seller has been paid", refunded: "Simulated: you got your money back", partial: "Simulated: part refund, seller got the rest" } as Record<string, string>)[s] ?? words(s);
+export const decisionText = (d: { action: string; refund_pct?: number }, amount?: number | null, cur = "INR") => {
+  if (d.action === "release") return "Seller gets paid. The reviewer found the item matches the listing.";
+  if (d.action === "request_evidence") return "We need one more photo from you. Payment stays on hold.";
+  const pct = d.refund_pct ?? 0;
+  if (pct >= 100) return "You get your money back" + (amount != null ? ` (${yen(amount, cur)}, simulated).` : ".");
+  if (amount != null) { const back = Math.round(amount * pct / 100); return `Part refund: you get ${yen(back, cur)} back, seller gets ${yen(amount - back, cur)} (simulated).`; }
+  return `Part refund: you get ${pct}% back, seller gets the rest.`;
+};
 export const sentence = (s: string) => { const text = words(s).trim().replace(/([^.!?]) Visual confirmation/g, "$1. Visual confirmation"); return !text || /[.!?。！？]$/.test(text) ? text : `${text}.`; };
 export const itemName = (r: { item: ConditionRecord["item"] }) => [r.item.brand, r.item.colour, r.item.type].filter(Boolean).join(" ");
 

@@ -40,4 +40,6 @@ def purchase_price(storage, record):
 
 
 def purchased_items(storage):
-    return {m["item_id"] for m in storage.list_json("mandates") if m["status"] in ("held", "released", "partial")}
+    # Sample fixtures (fx_*/d_*) stay listed so every judge can buy them repeatedly; each purchase has its own mandate.
+    return {m["item_id"] for m in storage.list_json("mandates")
+            if m["status"] in ("held", "released", "partial") and not (storage.get_json("listings", m["item_id"]) or {}).get("fixture")}

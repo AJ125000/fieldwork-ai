@@ -26,7 +26,7 @@ No visible-defect or delivery accuracy is inferred from owner-level condition no
 
 ## Reconstruct local inputs
 
-- Public training source: Hugging Face `fnauman/fashion-second-hand-front-only-rgb`; acquisition and source-label audit are documented in `CLAUDE.md`, `MODEL-TRAINING-STATUS.md` and `fieldwork-ai/train/`.
+- Public training source: Hugging Face `fnauman/fashion-second-hand-front-only-rgb`; acquisition and source-label audit are documented in `fieldwork-ai/train/`.
 - Pretrained checkpoints: `google/siglip2-base-patch16-224` and `facebook/dinov2-small`; Transformers downloads them to its normal cache.
 - Private development captures: supplied separately by the owner into `fieldwork-ai/data/organized-garments/`; they are not published here.
 - New real received-capture annotations: follow `CAPTURE-GUIDE.md` and the included `fieldwork-ai/data/capture-kit/` templates.

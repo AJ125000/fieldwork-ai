@@ -16,7 +16,7 @@ Baseline cumulative wall time was 380.56 seconds versus 740.41 seconds for the r
 | 05 back dark spot | No hole reported | Proposed a small hole | The separate context check returns uncertain: pixels cannot establish a through-opening versus stain/lint. This is NOT confirmed as the owner's real hole, which the owner says is hidden by folds. |
 | 06 reported hip hole | Not reported | Not reported as a hole | Owner says it is not properly visible. Do not count this as a demonstrated visible-defect miss or claim physically absent. The regional stain/snag proposals are separate, unconfirmed observations. |
 
-The visual reviews above are Codex development checks with prior exposure to earlier results, not independent human adjudication. `visual-review-reference.json` records the provisional garment-02 anchor and its provenance. Remaining per-image reference labels are explicitly pending in `review-reference.json`. A second model opinion is also not ground truth.
+The visual reviews above are development checks with prior exposure to earlier results, not independent human adjudication. `visual-review-reference.json` records the provisional garment-02 anchor and its provenance. Remaining per-image reference labels are explicitly pending in `review-reference.json`. A second model opinion is also not ground truth.
 
 ## Context check
 

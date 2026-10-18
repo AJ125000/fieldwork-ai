@@ -12,7 +12,7 @@ New context wall time totals 1,034.65 seconds across the dataset, including retr
 
 Owner-described defect-free garments with at least one supported proposal are 5/10 for raw context decisions and 3/10 with the conservative policy (raw regional definite proposals flagged 4/10; overview flagged 1/10). These are unresolved disagreement counts, not false-positive rates. In particular, a failed context task or conservative abstention must not be counted as a correctly rejected defect. No net accuracy improvement is established.
 
-- Garment 01's proposed hole is rejected. Both the earlier hole-specific context prompt and this general context prompt describe fabric lettering/indentations or creases rather than an opening. This agrees with the earlier Codex pixel inspection; independent human reference review remains pending.
+- Garment 01's proposed hole is rejected. Both the earlier hole-specific context prompt and this general context prompt describe fabric lettering/indentations or creases rather than an opening. This agrees with the earlier pixel inspection; independent human reference review remains pending.
 - Garment 02's visible hole survives the sequence. Both initial arms and both context prompts localize/support the small opening below the pocket. This is a useful development regression case, not a general hole-recall estimate.
 - Garment 03's back-hem brown specks survive confirmation, while the faint yellow hem proposal stays uncertain. The brown specks were visible in the earlier source-crop review, and the original overview had reported no defect. Do not infer the chemical cause as mud from pixels alone.
 - The proposed snag on garment 09's back is rejected. These are saved model decisions, not independently scored false positives.

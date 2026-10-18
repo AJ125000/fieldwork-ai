@@ -2,6 +2,7 @@
 import { createEscrow, makeOffer, rememberMandate, yen, type Offer } from "@/lib/api";
 import { Button } from "./Button";
 import { useDraftState } from "@/lib/useDraftState";
+import { useBought } from "@/lib/useBought";
 import styles from "./Flow.module.css";
 
 export function PurchaseControls({ itemId, askingPrice, negotiationEnabled = false }: {
@@ -18,8 +19,10 @@ export function PurchaseControls({ itemId, askingPrice, negotiationEnabled = fal
     catch (e) { setError(e instanceof Error ? e.message : "Could not create escrow."); }
     finally { setBusy(false); }
   }
+  const bought = useBought(itemId);
+  if (bought) return <div className={styles.section}><p role="status"><strong>You bought this</strong></p><Button href={bought.href}>View your purchase</Button></div>;
   if (!askingPrice) return <p className="t-body-s">The seller must set an asking price before purchase.</p>;
-  if (held) return <div className={styles.section}><p role="status">Simulated escrow is held until you accept delivery or a human reviews an issue.</p><Button href={`/unbox/${itemId}`}>Check received garment</Button></div>;
+  if (held) return <div className={styles.section}><p role="status">Simulated payment is on hold. It goes to the seller when you accept delivery, or a person decides if you report an issue.</p><Button href={`/unbox/${itemId}`}>Check received garment</Button></div>;
   return <div className={styles.section}>
     {error && <p className={styles.err} role="alert">{error}</p>}
     <Button loading={busy} onClick={() => purchase(askingPrice)}>Confirm purchase · hold {yen(askingPrice, "INR")}</Button>

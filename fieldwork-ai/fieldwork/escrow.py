@@ -64,7 +64,7 @@ def _create(item_id, payer, payee, amount, currency, quote_id):
         raise ValueError("Purchase currency must match the listing.")
     from .pricing import validate_purchase
     validate_purchase(store, item_id, amount, currency, quote_id)
-    if any(m["item_id"] == item_id and m["status"] in ("held", "released", "partial") for m in store.list_json("mandates")):
+    if not listing.get("fixture") and any(m["item_id"] == item_id and m["status"] in ("held", "released", "partial") for m in store.list_json("mandates")):
         raise ValueError("This garment already has a purchase. Open its delivery or issue report.")
     m = Mandate(id=f"md_{uuid.uuid4().hex[:10]}", item_id=item_id, payer=payer, payee=payee, amount=amount, currency=currency)
     m.signature = _sign(m)

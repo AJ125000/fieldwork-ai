@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useBought } from "@/lib/useBought";
 import Link from "next/link";
 import { ArrowUp, FileSearch, Landmark, MessageCircleQuestion, ScrollText } from "lucide-react";
 import { AIActivity } from "@/components/AIActivity";
+import { GarmentImage } from "@/components/GarmentGallery";
 import { AIMessage } from "@/components/AIMessage";
 import { BottomNav } from "@/components/BottomNav";
 import { Button } from "@/components/Button";
@@ -87,7 +89,7 @@ function ToolRow({ call }: { call: ToolCall }) {
   } else if (call.tool === "create_escrow") {
     Icon = Landmark;
     const m = dig(call.result, isMandate);
-    text = `Escrow held ${m ? yen(m.amount, m.currency) : yen(Number(a.amount ?? 0))}`;
+    text = `Simulated escrow held ${m ? yen(m.amount, m.currency) : yen(Number(a.amount ?? 0))}`;
   } else if (call.tool === "get_escrow") {
     Icon = Landmark;
     text = "Checked the escrow";
@@ -109,9 +111,10 @@ function ToolRow({ call }: { call: ToolCall }) {
 
 function OptionCard({ c, onConfirm, busy, done }: { c: SearchCard; onConfirm: () => void; busy: boolean; done: boolean }) {
   const name = [c.item.brand, c.item.colour, c.item.type].filter(Boolean).join(" ");
+  const bought = useBought(c.id);
   return (
     <article className={styles.card} aria-label={name}>
-      <ListingMedia media={c.media ?? []} compact />
+      {c.media?.some(m => m.kind === "photo") ? <ListingMedia media={c.media} compact /> : <a href={`/pass/${c.id}`} className="fw-agent-product"><GarmentImage id={c.id} alt={name} /></a>}
       <div className={styles.between}>
         <h3 className="t-heading-s">{name}</h3>
         <span className="t-num-m">{c.purchase_price ? yen(c.purchase_price, "INR") : "Price not set"}</span>
@@ -124,9 +127,10 @@ function OptionCard({ c, onConfirm, busy, done }: { c: SearchCard; onConfirm: ()
       {c.cant_judge.length > 0 && <p className={`${styles.meta} t-meta`}>Can&rsquo;t judge from the take: {c.cant_judge.map(words).join(", ")}</p>}
       <div className={styles.row}>
         <Button variant="secondary" size="md" href={`/pass/${c.id}`}>View listing, photos and video</Button>
-        <Button size="md" loading={busy} disabled={done || !c.purchase_price} onClick={onConfirm}>
-          {done ? "Escrow held" : `Confirm · hold ${c.purchase_price ? yen(c.purchase_price, "INR") : ""}`}
+        {bought ? <><Chip>You bought this</Chip><Button size="md" href={bought.href}>View your purchase</Button></> : <Button size="md" loading={busy} disabled={done || !c.purchase_price} onClick={onConfirm}>
+          {done ? "Simulated escrow held" : `Confirm · simulated hold ${c.purchase_price ? yen(c.purchase_price, "INR") : ""}`}
         </Button>
+        }
       </div>
     </article>
   );
@@ -165,7 +169,7 @@ export function AgentView() {
           const md = dig(c.result, isMandate);
           if (md) {
             rememberMandate(md.item_id, md);
-            next.push({ kind: "escrow", text: `Escrow held ${yen(md.amount, md.currency)}`, itemId: md.item_id });
+            next.push({ kind: "escrow", text: `Simulated escrow held ${yen(md.amount, md.currency)}`, itemId: md.item_id });
           }
         }
       }
@@ -184,7 +188,7 @@ export function AgentView() {
     try {
       const md = await createEscrow(c.id, c.purchase_price, "INR");
       rememberMandate(c.id, md);
-      setLog((l) => [...l, { kind: "escrow", text: `Escrow held ${yen(md.amount, md.currency)}`, itemId: c.id }]);
+      setLog((l) => [...l, { kind: "escrow", text: `Simulated escrow held ${yen(md.amount, md.currency)}`, itemId: c.id }]);
     } catch (e) {
       setLog((l) => [...l, { kind: "error", text: e instanceof Error ? e.message : "Escrow failed." }]);
     } finally {
@@ -199,7 +203,7 @@ export function AgentView() {
     try {
       const md = await createEscrow(quote.item_id, quote.price, "INR", quote.quote_id);
       rememberMandate(quote.item_id, md);
-      setLog(l => [...l, { kind: "escrow", text: `Escrow held ${yen(md.amount, md.currency)}`, itemId: quote.item_id }]);
+      setLog(l => [...l, { kind: "escrow", text: `Simulated escrow held ${yen(md.amount, md.currency)}`, itemId: quote.item_id }]);
     } catch (e) { setLog(l => [...l, { kind: "error", text: e instanceof Error ? e.message : "Purchase failed." }]); }
     finally { setEscrowBusy(""); }
   }
@@ -208,7 +212,10 @@ export function AgentView() {
     <>
       <TopBar title="Shopping agent" backHref="/" titleAs="h1" />
       <main className={styles.main}>
-        <p className="t-body-s t-secondary">Tell your agent what you want in one sentence. It searches by evidence and asks the garment. After purchase, accept the delivery or raise an issue for human review while escrow stays held.</p>
+        <section className="fw-agent-intro"><p className="fw-section-number">YOUR SHOPPING COMPANION</p><h2 className="t-display-m">Find a piece.<br/>Ask a little more.</h2><p className="fw-disclosure">Answers use garment records and image evidence. The agent can also check simulated purchase status.</p></section>
+        <details className={styles.details}><summary className="t-label">How your agent helps</summary><ol className="fw-plan"><li>Search by your preferences and available evidence.</li><li>Ask about the details that matter to you.</li><li>Create a simulated hold only after you confirm.</li></ol><p className="fw-disclosure">A general workflow; the tools used depend on your request.</p></details>
+
+        <p className="t-body-s t-secondary">Tell your agent what you want in one sentence. It searches by evidence and asks the garment. After purchase, accept the delivery or raise an issue for human review while the simulated escrow stays held. No real money moves.</p>
         <PurchaseHistory />
 
         <div className={styles.chat} aria-live="polite">
@@ -227,7 +234,7 @@ export function AgentView() {
               return (
                 <div key={i} className={styles.card}>
                   <div className={styles.tool}><Landmark size={16} aria-hidden="true" /><p className="t-body-s">{e.text}</p></div>
-                  <StatusTag state="money" label="Held until you unbox" size="sm" />
+                  <StatusTag state="money" label="Simulated hold until you unbox" size="sm" />
                   <Button variant="secondary" size="md" href={`/unbox/${e.itemId}`}>When it arrives: check it</Button>
                 </div>
               );
@@ -235,6 +242,7 @@ export function AgentView() {
             const quote = e.call.tool === "propose_price" ? dig(e.call.result, isOffer) : undefined;
             return (
               <div key={i} className={styles.section}>
+                {log.findIndex(entry=>entry.kind==="tool")===i&&<p className="fw-section-number">WHAT YOUR AGENT DID</p>}
                 <ToolRow call={e.call} />
                 {quote?.price && <div className={styles.card}>
                   <p>Seller {quote.status === "counter" ? "counteroffer" : "price"}: {yen(quote.price, "INR")}.</p>

@@ -10,7 +10,7 @@
 .evidenceGrid img, .evidenceGrid video { width: 100%; max-height: 320px; object-fit: contain; border-radius: var(--fw-radius-card); }
 .section { display: flex; flex-direction: column; gap: var(--fw-space-3); }
 .section h1, .section h2, .section h3, .section p { margin: 0; }
-.card { display: flex; flex-direction: column; gap: var(--fw-space-3); padding: var(--fw-space-4); background: var(--fw-surface-base); border: var(--fw-border-default); border-radius: var(--fw-radius-card); }
+.card { display:flex; flex-direction:column; gap:var(--fw-space-3); padding:20px; background:var(--fw-glass-bg-solid); background:var(--fw-glass-bg); border:var(--fw-glass-border); box-shadow:var(--fw-glass-shadow); -webkit-backdrop-filter:var(--fw-glass-blur); backdrop-filter:var(--fw-glass-blur); border-radius:var(--fw-radius-card); }
 .card h2, .card h3, .card p { margin: 0; }
 .dark { background: var(--fw-surface-dark); color: var(--fw-text-on-dark); border: 0; border-radius: var(--fw-radius-feature); padding: var(--fw-space-5); display: flex; flex-direction: column; gap: var(--fw-space-2); }
 .dark h2, .dark p { margin: 0; }
@@ -41,9 +41,9 @@
 .bubbleYou p { margin: 0; }
 .chat { display: flex; flex-direction: column; gap: var(--fw-space-3); }
 .cam { position: relative; width: 100%; aspect-ratio: 3 / 4; background: var(--fw-surface-camera); border-radius: var(--fw-radius-feature); overflow: hidden; color: var(--fw-text-on-dark); }
-.cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam video { width: 100%; height: 100%; object-fit: contain; display: block; }
 .camIdle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: var(--fw-space-6); text-align: center; }
-.camOverlay { position: absolute; inset: auto 0 0 0; padding: var(--fw-space-4); background: rgba(23, 28, 25, 0.6); display: flex; flex-direction: column; gap: var(--fw-space-1); }
+.camOverlay { position:absolute; inset:auto 14px 14px; padding:16px; background:linear-gradient(135deg,#5C5142DB,#2B241DD9); border:1px solid #FFFFFF77; backdrop-filter:blur(16px); border-radius:22px; display:flex; flex-direction:column; gap:4px; }
 .camOverlay p { margin: 0; }
 .bigCode { font-family: var(--fw-font-mono); font-size: var(--fw-fs-display-l); line-height: var(--fw-lh-display-l); letter-spacing: 0.18em; font-weight: 500; }
 .rec { position: absolute; top: var(--fw-space-3); left: var(--fw-space-3); padding: var(--fw-space-1) var(--fw-space-2); background: var(--fw-glass-dark-bg); border: 1px solid var(--fw-glass-dark-border); border-radius: var(--fw-radius-control); }

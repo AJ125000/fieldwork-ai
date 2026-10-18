@@ -22,7 +22,7 @@ def main():
         store.put_json("listings",item,listing)  # explicitly chosen test-actor prices, no estimate
     assert len(ids) == 6
 
-    cards = market.search({"type": "coat", "colour": "navy", "max_price": 6000, "exclude_defects": ["stain"]})
+    cards = market.search({"type": "shirt", "colour": "navy", "max_price": 6000, "exclude_defects": ["stain"]})
     print("search navy coat no stains ->", [c["id"] for c in cards])
     assert [c["id"] for c in cards] == ["fx_coat_navy_clean"]
 
@@ -36,13 +36,13 @@ def main():
     from fieldwork.api import app
     c = TestClient(app)
     assert c.get("/health").json()["ok"]
-    assert len(c.get("/search", params={"type": "coat", "exclude_defects": "stain"}).json()) == 2
+    assert len(c.get("/search", params={"type": "trousers", "exclude_defects": "stain"}).json()) == 0
     a = c.post("/ask", json={"item_id": "fx_coat_navy_stain", "question": "左の袖口にシミはありますか？"}).json()
     print("API /ask ->", json.dumps(a, ensure_ascii=False))
     assert a["state"] in ("shown", "not_in_take", "cant_judge")
 
     from fieldwork.agents.buyer import chat
-    out = asyncio.run(chat("t1", "Find me a navy wool coat with no stains under 6000 rupees"))
+    out = asyncio.run(chat("t1", "Find me a navy shirt with no stains under 6000 rupees"))
     print("AGENT model:", out.get("model"))
     for t in out["tool_calls"]:
         print("  tool:", t["tool"], json.dumps(t["args"], ensure_ascii=False))

@@ -54,10 +54,3 @@ fieldwork-ai/data/results/**
 fieldwork-ai/data/results/**/store/
 fieldwork-ai/data/results/**/logs/
 fieldwork-ai/data/results/**/context-logs/
-
-# Research source code and written reports are included; downloaded raw records
-# and generated review labels can be reconstructed with the research scripts.
-research/app-reviews/data/
-research/app-reviews/*.jsonl
-research/competition/raw/
-research/competition/*.jsonl

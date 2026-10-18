@@ -1,7 +1,7 @@
 # FIELDWORK — DESIGN SYSTEM & FRONTEND VISUAL CONTRACT
 Version: 1.0
 Status: Authoritative
-Audience: Claude Code / coding agents, frontend engineers, product designers
+Audience: frontend engineers, product designers
 Product: Fieldwork — evidence layer for second-hand commerce
 
 > IMPORTANT
@@ -2380,8 +2380,7 @@ This system intentionally uses established open design-system practices while cr
 Reference principles:
 - GitHub Primer separates foundations, patterns, components, responsive rules and accessibility.
 - Radix provides unstyled, composable, accessibility-focused primitives suitable as a base layer.
-- shadcn/ui uses open component code and composable interfaces that are particularly suitable for AI-assisted development.
-- Claude Code can load a project-level CLAUDE.md automatically, making this file appropriate as an agent-facing source of truth.
+- shadcn/ui uses open component code and composable interfaces.
 
 Fieldwork-specific decisions above are product/design decisions, not claims that any one reference system mandates them.
 

@@ -37,16 +37,16 @@ export function Wordmark({ size = 24 }: { size?: number }) {
         color: "inherit",
       }}
     >
-      <Logo size={size} />
       <span
         style={{
-          fontWeight: 600,
-          fontSize: "var(--fw-fs-heading-s)",
+          fontWeight: 400,
+          fontFamily: "Georgia, serif",
+          fontSize: size,
           lineHeight: "var(--fw-lh-heading-s)",
-          letterSpacing: "-0.01em",
+          letterSpacing: "-0.055em",
         }}
       >
-        Fieldwork
+        fieldwork
       </span>
     </span>
   );

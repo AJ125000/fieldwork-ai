@@ -16,5 +16,5 @@ echo Step 3 of 3: turn on the services Fieldwork uses (takes a minute).
 call "%GCLOUD%" services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com aiplatform.googleapis.com firestore.googleapis.com storage.googleapis.com
 
 echo.
-echo Done. Tell Claude "cloud setup done".
+echo Done.
 pause

@@ -33,6 +33,7 @@ export function CameraCapture({ seconds, onRecorded, overlay, idleText, recordLa
   const [error, setError] = useState("");
 
   const stop = useCallback(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setOn(false);
@@ -68,9 +69,12 @@ export function CameraCapture({ seconds, onRecorded, overlay, idleText, recordLa
   function record() {
     const s = streamRef.current;
     if (!s) return;
+    if (typeof MediaRecorder === "undefined") { setError("Video recording is not supported here. Use the photo or video upload below."); return; }
     const type = pickType();
     const chunks: Blob[] = [];
-    const rec = new MediaRecorder(s, type ? { mimeType: type } : undefined);
+    let rec: MediaRecorder;
+    try { rec = new MediaRecorder(s, type ? { mimeType: type } : undefined); }
+    catch { setError("Recording could not start. Use the upload option below."); return; }
     recRef.current = rec;
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = () => {

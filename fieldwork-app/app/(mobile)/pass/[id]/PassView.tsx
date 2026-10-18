@@ -1,236 +1,49 @@
 "use client";
+import {useEffect,useRef,useState} from "react";
+import {ArrowUpRight,ChevronRight,Info,Send} from "lucide-react";
+import {BottomNav} from "@/components/BottomNav";
+import {Button} from "@/components/Button";
+import {GarmentGallery} from "@/components/GarmentGallery";
+import {Crop} from "@/components/Crop";
+import {ListingMedia} from "@/components/ListingMedia";
+import {PurchaseControls} from "@/components/PurchaseControls";
+import {TopBar} from "@/components/TopBar";
+import {ask,getListing,getRecord,gradeRange,itemName,recordUrl,sentence,words,yen,type Answer,type Box,type Claim,type ConditionRecord,type Listing} from "@/lib/api";
+import f from "@/components/Flow.module.css";
+import {useDraftState} from "@/lib/useDraftState";
+import s from "./pass.module.css";
+const lanes=[{key:"shown",label:"Shown",note:"Visible observations with source images."},{key:"declared",label:"Seller-declared",note:"Reported by the seller; distinct from what images establish."},{key:"cant_judge",label:"Can't judge",note:"Not established by these images."},{key:"measured",label:"Measured",note:"Computed values and margins, when available."}] as const;
+const LANG_LABEL:Record<string,string>={en:"English",ja:"日本語",ko:"한국어","zh-TW":"繁體中文",th:"ไทย","id-ID":"Indonesia",vi:"Tiếng Việt",hi:"हिन्दी"};
+const MAIN_REGIONS=["front","back","collar","left_sleeve","right_sleeve","left_cuff","right_cuff","hem","pocket"];
+const claimText=(c:Claim)=>c.lane==="measured"&&c.value!=null?words(c.code)+": "+c.value+(c.error!=null?" ± "+c.error:""):c.note||words(c.code);
+export function PassView({id}:{id:string}){
+ const [rec,setRec]=useState<ConditionRecord|null>(null),[listing,setListing]=useState<Listing|null>(null),[error,setError]=useState(""),[tab,setTab]=useState<"overview"|"evidence">("evidence"),[selected,setSelected]=useState<Box|null>(null),[q,setQ]=useDraftState(`fw.pass.${id}.q`,""),[answer,setAnswer]=useDraftState<Answer|null>(`fw.pass.${id}.answer`,null),[askErr,setAskErr]=useDraftState(`fw.pass.${id}.askErr`,""),[asking,setAsking]=useDraftState(`fw.pass.${id}.asking`,false,false),[lang,setLang]=useDraftState(`fw.pass.${id}.lang`,"en");
+ const gallery=useRef<HTMLDivElement>(null),question=useRef<HTMLTextAreaElement>(null);
+ useEffect(()=>{let active=true;getRecord(id).then(r=>{if(active)setRec(r);}).catch(e=>{if(active)setError(e.message);});getListing(id).then(l=>{if(active)setListing(l);}).catch(()=>{});return()=>{active=false;};},[id]);
+ async function submitQ(){if(!q.trim())return;setAsking(true);setAskErr("");try{setAnswer(await ask(id,q));}catch(e){setAskErr(e instanceof Error?e.message:"Could not answer. Your question is still here to retry.");}finally{setAsking(false);}}
+ function inspect(c:Claim){if(c.evidence[0]){setSelected(c.evidence[0]);gallery.current?.scrollIntoView({block:"start"});}}
+ if(!rec)return <><TopBar title="Garment Pass"/><main className={f.main}>{error?<><p role="alert" className={f.err}>{error}</p><Button href="/">Back to Discover</Button></>:<p role="status">Opening the garment's record…</p>}</main></>;
+ const languages=["en",...["ja","ko","zh-TW","th","id-ID","vi","hi"].filter(k=>typeof listing?.[k]==="string")];
+ const text=lang==="en"?listing?.en??rec.listing_text_en:String(listing?.[lang]??"");
+ const draft=listing?.publication_status==="draft";
+  const covered=new Set(rec.claims.filter(c=>c.lane==="shown"&&c.evidence.length).map(c=>c.region));
+  const uncovered=MAIN_REGIONS.filter(r=>!covered.has(r));
+ return <><TopBar title="Garment Pass" backHref="/" titleAs="p"/><main className={s.main}>
+ <div ref={gallery}><GarmentGallery compact record={rec} selected={selected} onSelect={setSelected}/></div>
+ <section className={s.sheet}>
+ <div className={s.handle}/><h1>{itemName(rec)||"Garment"}</h1><p className={s.price}>{listing?.asking_price?yen(listing.asking_price,listing.currency??"INR"):"Asking price not set"}</p><p className={s.meta}>{rec.item.size_label?"Size "+rec.item.size_label+" · Seller-declared":"Size not recorded"}{rec.item.material?" · "+rec.item.material:""}</p>
+ {draft&&<p className={f.err}>Seller draft · not available for purchase. <a href={"/sell/review/"+id}>Review and publish →</a></p>}
+ <div className={s.tabs} role="group" aria-label="Pass sections"><button aria-pressed={tab==="overview"} onClick={()=>setTab("overview")}>Overview</button><button aria-pressed={tab==="evidence"} onClick={()=>setTab("evidence")}>Evidence</button></div>
+ {tab==="overview"?<section className={f.section}><h2 className="t-heading-s">The seller's listing</h2>{languages.length>1&&<label className="t-label">Listing language<select className={f.field} value={lang} onChange={e=>setLang(e.target.value)}>{languages.map(k=><option key={k} value={k}>{LANG_LABEL[k]??k}</option>)}</select></label>}<p className="t-body-s" lang={lang}>{text?sentence(text):"No listing description available."}</p><div className={s.range}><span>Model estimate from supplied views</span><strong>{gradeRange(rec.grade_set)}</strong><small>A condition range, not a confidence score or a promise.</small></div></section>:<div className={s.evidencePreview}>{rec.claims.filter(c=>c.lane==="shown"&&c.evidence.length).slice(0,1).map(c=><button className={s.sourceCard} key={c.id} onClick={()=>inspect(c)}><div><Crop itemId={rec.id} box={c.evidence[0]} label=""/></div><span><strong>{words(c.region)}</strong><small>Shown in {c.evidence[0].frame_id}</small><u>Open source ↗</u></span><ChevronRight size={17}/></button>)}{rec.claims.filter(c=>c.lane==="cant_judge").slice(0,1).map(c=><p className={s.unknown} key={c.id}><Info size={15}/>{claimText(c)}</p>)}<details className={s.allEvidence}><summary>All condition lanes · {rec.claims.length} entries</summary><div className={s.lanes}>{lanes.map(l=>{const claims=rec.claims.filter(c=>c.lane===l.key);return <section key={l.key} className={s.lane}><header><h2>{l.label}</h2><span>{claims.length}</span></header><p className={s.laneNote}>{l.note}</p>{claims.length?claims.map((c,i)=><button className={s.claim} key={c.id} disabled={!c.evidence.length} onClick={()=>inspect(c)}><span className={s.number}>{String(i+1).padStart(2,"0")}</span><span><strong>{claimText(c)}</strong><small>{words(c.region)}{c.evidence[0]?" · Source "+c.evidence[0].frame_id:" · No image citation"}</small></span>{!!c.evidence.length&&<ChevronRight size={18}/>}</button>):<p className={s.empty}>{l.key==="measured"?"No measurements available.":"Nothing recorded in this lane."}</p>}</section>;})}</div></details></div>}
+  <section className={s.purchase} aria-label="Seller price and purchase"><h2 className="t-heading-s">Seller’s asking price</h2><p className="t-num-m">{listing?.asking_price?yen(listing.asking_price,listing.currency??"INR"):"Not set"}</p><p className="t-body-s t-secondary">Set by the seller. Condition grades do not determine the price.</p>{draft?<Button fullWidth href={"/sell/review/"+id}>Review seller draft</Button>:listing?.purchase_available===false?<><p className="t-body-s">This garment has an existing purchase.</p><Button fullWidth variant="secondary" href={"/unbox/"+id}>Open delivery and review status</Button></>:<PurchaseControls itemId={id} askingPrice={listing?.purchase_price??null} negotiationEnabled={listing?.negotiation_enabled}/>}{listing?.seller_managed&&listing?.purchase_available!==false&&!draft&&!listing?.purchase_price&&<Button fullWidth variant="secondary" href={"/sell/review/"+id}>Seller: set asking price</Button>}{listing?.purchase_available!==false&&<p className={s.disclosure}>Simulated checkout · You confirm before a hold is created</p>}</section>
+  {!!listing?.media?.length&&<section className={f.section} aria-label="Seller photos and video"><h2 className="t-heading-s">Seller photos and video</h2><ListingMedia media={listing.media}/></section>}
+ {!!listing?.seller_limitations?.length&&<details className={s.limitsDetail}><summary>Limitations buyers should know</summary><section className={s.limitations}><Info size={18}/><div><h2>What remains unresolved</h2>{listing.seller_limitations.map((t,i)=><p key={i}>{t}</p>)}</div></section></details>}
+ <details className={f.details}><summary className="t-label">Capture coverage</summary>{listing?.capture_coverage?<div className={f.section}>{listing.capture_coverage.views.map(v=><p className="t-body-s" key={v.region}>{words(v.region)} · {words(v.status)}{v.note?" — "+v.note:""}</p>)}{listing.capture_coverage.guidance.map((t,i)=><p key={i} className="t-body-s">{t}</p>)}<p className="fw-disclosure">{listing.capture_coverage.limitation}</p></div>:<p className="t-body-s">Only the supplied frames establish what was captured. Other views remain unknown.</p>}<p className="t-body-s">{uncovered.length?"No evidence crop for: "+uncovered.map(words).join(", ")+".":"Every main region has an evidence crop."} Details outside the supplied photos and video remain unknown.</p></details>
+ <details className={s.askDetails}><summary>Ask about this garment ↗</summary><section className={s.ask}><p>Answers use this record and its image evidence.</p><label className="sr-only" htmlFor="garment-question">Your question</label><textarea ref={question} id="garment-question" rows={2} value={q} onChange={e=>setQ(e.target.value)} placeholder="What can you see around the cuffs?"/><Button variant="secondary" loading={asking} disabled={!q.trim()} onClick={submitQ} iconTrailing={<Send size={16}/>}>Ask the garment</Button>{askErr&&<p role="alert" className={f.err}>{askErr}</p>}{answer&&<div className={s.answer} role="status"><span>{answer.state==="shown"?"Shown in the evidence":answer.state==="cant_judge"?"Can't judge from images":"Not shown in these views"}</span><p lang={answer.lang}>{answer.answer}</p>{rec.claims.filter(c=>answer.claim_ids.includes(c.id)).map(c=><button key={c.id} onClick={()=>inspect(c)}>Open supporting source <ArrowUpRight size={15}/></button>)}</div>}</section></details>
+ <details className={f.details}><summary className="t-label">Agent-readable record</summary><p className="t-body-s">This same condition record is available to shopping agents. <a href={recordUrl(id)} target="_blank" rel="noreferrer">Open record ↗</a></p></details>
+ {error&&<p className={f.err} role="alert">{error}</p>}
 
-import { useEffect, useState } from "react";
-import { ArrowRight, Send } from "lucide-react";
-import { AIActivity } from "@/components/AIActivity";
-import { BottomNav } from "@/components/BottomNav";
-import { Button } from "@/components/Button";
-import { Chip, ChipGroup } from "@/components/Chip";
-import { Crop } from "@/components/Crop";
-import { EvidenceBadge } from "@/components/EvidenceBadge";
-import { StatusTag } from "@/components/StatusTag";
-import { TopBar } from "@/components/TopBar";
-import { ListingMedia } from "@/components/ListingMedia";
-import { PurchaseControls } from "@/components/PurchaseControls";
-import { ask, getListing, getRecord, gradeRange, itemName, recordUrl, sentence, words, yen, type Answer, type Claim, type ConditionRecord, type Lane, type Listing } from "@/lib/api";
-import type { EvidenceState } from "@/lib/mock";
-import { useDraftState } from "@/lib/useDraftState";
-import styles from "@/components/Flow.module.css";
-
-const LANES: { lane: Lane; title: string; blurb: string; state: EvidenceState; label: string }[] = [
-  { lane: "shown", title: "Shown", blurb: "Visible in the take, with the frame it comes from.", state: "shown", label: "Shown" },
-  { lane: "measured", title: "Measured", blurb: "A number we computed, with its margin.", state: "shown", label: "Measured" },
-  { lane: "declared", title: "Declared", blurb: "The seller said so. Not checkable from the take.", state: "not-shown", label: "Seller said" },
-  { lane: "cant_judge", title: "Can't judge", blurb: "Photos and video can't establish these.", state: "cant-tell", label: "Can't judge" },
-];
-const LANG_LABEL: Record<string, string> = { en: "English", ja: "日本語", ko: "한국어", "zh-TW": "繁體中文", th: "ไทย", id: "Indonesia", vi: "Tiếng Việt", hi: "हिन्दी" };
-const MAIN_REGIONS = ["front", "back", "collar", "left_sleeve", "right_sleeve", "left_cuff", "right_cuff", "hem", "pocket"];
-
-function claimText(c: Claim) {
-  if (c.lane === "measured" && c.value != null) return `${words(c.code)}: ${c.value}${c.error != null ? ` ± ${c.error}` : ""}`;
-  return c.note || words(c.code);
-}
-
-export function PassView({ id }: { id: string }) {
-  const [rec, setRec] = useState<ConditionRecord | null>(null);
-  const [listing, setListing] = useState<Listing | null>(null);
-  const [error, setError] = useState("");
-  const [lang, setLang] = useDraftState(`fw.pass.${id}.lang`, "en");
-  const [q, setQ] = useDraftState(`fw.pass.${id}.q`, "");
-  const [asking, setAsking] = useDraftState(`fw.pass.${id}.asking`, false, false);
-  const [answer, setAnswer] = useDraftState<{ q: string; a: Answer } | null>(`fw.pass.${id}.answer`, null);
-  const [askErr, setAskErr] = useDraftState(`fw.pass.${id}.askErr`, "");
-
-  useEffect(() => {
-    getRecord(id).then(setRec).catch((e: Error) => setError(e.message));
-    getListing(id).then(setListing).catch(() => {});
-  }, [id]);
-
-  async function submitQ() {
-    if (!q.trim() || asking) return;
-    setAsking(true);
-    setAskErr("");
-    try {
-      setAnswer({ q, a: await ask(id, q) });
-    } catch (e) {
-      setAskErr(e instanceof Error ? e.message : "Couldn't ask.");
-    } finally {
-      setAsking(false);
-    }
-  }
-
-  if (error)
-    return (
-      <>
-        <TopBar title="Garment Pass" />
-        <main className={styles.main}>
-          <p className={`${styles.err} t-body`} role="alert">{error}</p>
-          <Button variant="secondary" href="/sell">Make a Pass</Button>
-        </main>
-      </>
-    );
-  if (!rec)
-    return (
-      <>
-        <TopBar title="Garment Pass" />
-        <main className={styles.main}><AIActivity title="Loading the Pass…" /></main>
-      </>
-    );
-
-  const langs = ["en", ...["ja", "ko", "zh-TW", "th", "id-ID", "vi", "hi"].filter((l) => typeof listing?.[l] === "string")];
-  const listingText = lang === "en" ? listing?.en ?? rec.listing_text_en : (listing?.[lang] as string);
-  const covered = new Set(rec.claims.filter((c) => c.lane === "shown" && c.evidence.length).map((c) => c.region));
-  const uncovered = MAIN_REGIONS.filter((r) => !covered.has(r));
-  const cited = answer ? rec.claims.filter((c) => answer.a.claim_ids.includes(c.id)) : [];
-  const answerState: { state: EvidenceState; label: string } =
-    answer?.a.state === "shown" ? { state: "shown", label: "Shown" } : answer?.a.state === "cant_judge" ? { state: "cant-tell", label: "Can't judge" } : { state: "not-shown", label: "Not shown in the take" };
-
-  return (
-    <>
-      <TopBar title="Garment Pass" backHref="/agent" titleAs="p" />
-      <main className={styles.main}>
-        <section className={styles.section} aria-labelledby="pass-title">
-          {listing?.publication_status === "draft" && <p className="t-body-s">Seller draft · not available for purchase. <a href={`/sell/review/${id}`}>Review and publish</a></p>}
-          <h1 id="pass-title" className="t-heading-l">{itemName(rec) || "Garment"}</h1>
-          <div className={styles.row}>
-            {rec.item.size_label && <Chip>Size {rec.item.size_label}</Chip>}
-            {rec.item.material && <Chip>{rec.item.material}</Chip>}
-            {rec.capture.code_seen ? <EvidenceBadge variant="compact" /> : <Chip>No one-time code seen</Chip>}
-          </div>
-        </section>
-
-        <section className={styles.section} aria-label="Seller photos and video">
-          <h2 className="t-heading-s">Seller photos and video</h2>
-          <ListingMedia media={listing?.media ?? []} />
-        </section>
-
-        <section className={styles.dark} aria-label="Condition grade">
-          <p className="t-overline">Grade range from our model</p>
-          <h2 className="t-num-l">{gradeRange(rec.grade_set)}</h2>
-          <p className={`${styles.quiet} t-body-s`}>Estimated from the take only. A range, not a promise.</p>
-        </section>
-
-        <section className={styles.card} aria-label="Seller price and purchase">
-          <h2 className="t-heading-s">Seller’s asking price</h2>
-          <p className="t-num-m">{listing?.asking_price ? yen(listing.asking_price, "INR") : "Not set"}</p>
-          <p className="t-body-s t-secondary">Set by the seller. Condition grades do not determine the price.</p>
-          {listing?.publication_status === "draft" ? <Button href={`/sell/review/${id}`}>Review seller draft</Button> : listing?.purchase_available === false ?
-            <><p className="t-body-s">This garment has an existing purchase.</p><Button variant="secondary" href={`/unbox/${id}`}>Open delivery and review status</Button></> :
-            <PurchaseControls itemId={id} askingPrice={listing?.purchase_price ?? null} negotiationEnabled={listing?.negotiation_enabled} />}
-          {listing?.seller_managed && listing?.purchase_available !== false && listing?.publication_status !== "draft" && !listing?.purchase_price && <Button variant="secondary" href={`/sell/review/${id}`}>Seller: set asking price</Button>}
-        </section>
-
-        <section className={styles.section} aria-labelledby="listing-h">
-          <h2 id="listing-h" className="t-heading-s">Listing</h2>
-          {langs.length > 1 && (
-            <ChipGroup label="Language">
-              {langs.map((l) => (
-                <Chip key={l} variant="answer" role="radio" selected={lang === l} onClick={() => setLang(l)}>
-                  <span lang={l}>{LANG_LABEL[l] ?? l}</span>
-                </Chip>
-              ))}
-            </ChipGroup>
-          )}
-          <p className="t-body" lang={lang}>{listingText ? sentence(listingText) : "No listing text."}</p>
-          {!!listing?.seller_limitations?.length && <div className={styles.card}>
-            <h3 className="t-heading-s">Unresolved limitations</h3>
-            <ul className={styles.bullets}>{listing.seller_limitations.map((text, i) => <li className="t-body-s" key={i}>{sentence(text)}</li>)}</ul>
-          </div>}
-        </section>
-
-        {LANES.map(({ lane, title, blurb, state, label }) => {
-          const cs = rec.claims.filter((c) => c.lane === lane);
-          return (
-            <section key={lane} className={styles.section} aria-labelledby={`lane-${lane}`}>
-              <div className={styles.between}>
-                <h2 id={`lane-${lane}`} className="t-heading-s">{title}</h2>
-                <StatusTag state={state} label={`${label} · ${cs.length}`} size="sm" />
-              </div>
-              <p className="t-body-s t-secondary">{blurb}</p>
-              {cs.length === 0 ? (
-                <p className="t-body-s t-quiet">Nothing in this lane.</p>
-              ) : (
-                <ul className={styles.list}>
-                  {cs.map((c) => (
-                    <li key={c.id} className={styles.item}>
-                      <p className="t-body">{claimText(c)}</p>
-                      <p className={`${styles.meta} t-meta`}>
-                        {words(c.region)}{c.severity !== "none" ? ` · ${c.severity}` : ""}
-                      </p>
-                      {c.evidence.length > 0 && (
-                        <div className={styles.thumbs}>
-                          {c.evidence.slice(0, 2).map((b, i) => (
-                            <Crop key={i} itemId={rec.id} box={b} label={b.frame_id} />
-                          ))}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          );
-        })}
-
-        <section className={styles.card} aria-labelledby="not-shown-h">
-          <h2 id="not-shown-h" className="t-heading-s">Coverage and close-up guidance</h2>
-          {listing?.capture_coverage && <>
-            <ul className={styles.list}>
-              {listing.capture_coverage.views.map(view => <li key={view.region}>
-                <span className="t-body-s">{words(view.region)} · {words(view.status)}{view.note ? ` — ${view.note}` : ""}</span>
-              </li>)}
-            </ul>
-            {listing.capture_coverage.guidance.map(text => <p key={text} className="t-body-s">{text}</p>)}
-            <p className="t-body-s t-secondary">{listing.capture_coverage.limitation}</p>
-          </>}
-          <p className="t-body-s">
-            {uncovered.length ? `No evidence crop for: ${uncovered.map(words).join(", ")}.` : "Every main region has an evidence crop."} Details outside the supplied photos and video remain unknown.
-          </p>
-        </section>
-
-        <section className={styles.section} aria-labelledby="ask-h">
-          <h2 id="ask-h" className="t-heading-s">Ask the garment</h2>
-          <p className="t-body-s t-secondary">Answers come only from this record and its frames, in your language.</p>
-          <label className="sr-only" htmlFor="ask-q">Your question</label>
-          <textarea
-            id="ask-q"
-            className={styles.field}
-            rows={2}
-            value={q}
-            placeholder="Is there a stain on the left cuff?"
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <Button variant="secondary" loading={asking} disabled={!q.trim()} onClick={submitQ} iconLeading={<Send size={20} strokeWidth={2} aria-hidden="true" />}>
-            Ask
-          </Button>
-          {askErr && <p className={`${styles.err} t-body-s`} role="alert">{askErr}</p>}
-          {answer && (
-            <div className={styles.card} role="status" aria-live="polite">
-              <p className={`${styles.meta} t-meta`}>{answer.q}</p>
-              <StatusTag state={answerState.state} label={answerState.label} />
-              <p className="t-body" lang={answer.a.lang}>{answer.a.answer}</p>
-              {cited.map((c) => (
-                <div key={c.id} className={styles.section}>
-                  <p className={`${styles.meta} t-meta`}>Cited · {claimText(c)}</p>
-                  {c.evidence[0] && <div className={styles.thumbs}><Crop itemId={rec.id} box={c.evidence[0]} label={c.evidence[0].frame_id} /></div>}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <details className={styles.details}>
-          <summary className="t-label">Agent-readable record</summary>
-          <p className="t-body-s t-secondary">Shopping agents read this same record, not the listing text. The one-time code is hidden.</p>
-          <p className="t-body-s">
-            <a href={recordUrl(rec.id)} target="_blank" rel="noreferrer">Open raw JSON ({rec.spec})</a>
-          </p>
-        </details>
-        <Button fullWidth href={`/agent?item=${encodeURIComponent(rec.id)}`} iconTrailing={<ArrowRight size={20} strokeWidth={2} aria-hidden="true" />}>
-          Ask my shopping agent about this
-        </Button>
-      </main>
-      <BottomNav />
-    </>
-  );
+ <a className={s.agentLink} href={"/agent?item="+encodeURIComponent(id)}>Continue with your shopping agent →</a>
+ </section></main>
+ </>;
 }
