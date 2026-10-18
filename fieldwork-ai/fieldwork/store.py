@@ -69,14 +69,22 @@ class CloudStore(LocalStore):
         self._synced: dict[str, set[tuple[str, int]]] = {}
 
     def put_json(self, kind: str, key: str, data: dict) -> None:
-        self.db.collection(kind).document(key).set(json.loads(json.dumps(data, ensure_ascii=False)))
+        # Firestore rejects arrays nested directly inside arrays (garment outlines,
+        # matrices). Keep the JSON document intact in a versioned envelope.
+        self.db.collection(kind).document(key).set({"_fieldwork_json_v1": json.dumps(data, ensure_ascii=False)})
 
     def get_json(self, kind: str, key: str) -> dict | None:
         snap = self.db.collection(kind).document(key).get()
-        return snap.to_dict() if snap.exists else None
+        return self._decode(snap.to_dict()) if snap.exists else None
 
     def list_json(self, kind: str) -> list[dict]:
-        return [d.to_dict() for d in self.db.collection(kind).stream()]
+        return [self._decode(d.to_dict()) for d in self.db.collection(kind).stream()]
+
+    @staticmethod
+    def _decode(document: dict) -> dict:
+        if set(document) == {"_fieldwork_json_v1"}:
+            return json.loads(document["_fieldwork_json_v1"])
+        return document  # read records written before the JSON envelope
 
     def sync_item(self, item_id: str) -> None:
         """Upload files in the item's working dir that are new or changed since the last sync."""

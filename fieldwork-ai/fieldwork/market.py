@@ -91,7 +91,7 @@ def _rec(id, typ, brand, size, colour, material, grades, band, claims, text, cod
         claims=claims, grade_set=grades, price_band=band,
         capture=Capture(code_expected="K7Q2", code_seen=code_seen, take_sha256="fixture", frames=["f1", "f2"]),
         listing_text_en=text)
-    l = {"id": id, "en": text, "evidence_badge": "strong" if code_seen else "basic", "fixture": True}
+    l = {"id": id, "en": text, "evidence_badge": "strong" if code_seen else "basic", "fixture": True, "demo": True}
     if price:
         l.update(price_source="seller", asking_price=price, currency="INR")
     return r.model_dump(mode="json"), l
