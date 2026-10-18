@@ -9,3 +9,14 @@ __pycache__/
 *.pyc
 cloud-setup.cmd
 .env*
+
+# Exclude downloaded credentials as well as environment files.
+.git/
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+application_default_credentials.json
+service-account*.json
+service_account*.json

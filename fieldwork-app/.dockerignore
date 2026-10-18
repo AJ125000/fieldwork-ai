@@ -1,3 +1,15 @@
 node_modules
 .next
-.env.local
+.env*
+# Only the public API endpoint file is needed for the Next.js build.
+!.env.production
+
+# Never include local credentials in build sources or images.
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+application_default_credentials.json
+service-account*.json
+service_account*.json
