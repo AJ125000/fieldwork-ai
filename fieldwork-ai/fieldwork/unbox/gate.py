@@ -12,6 +12,7 @@ An inconclusive comparison suggests a random close-up for the human reviewer.
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from .. import config
 from ..evidence import valid_box
 from . import judge
 from .align import align
-from .diff import change_regions, crop_pair, InsufficientComparisonArea
+from .diff import change_regions, crop_pair, comparable_box, InsufficientComparisonArea
 
 
 # Change scores: planted stains ~6, unchanged re-shoots ~2.6 (tests/test_cv.py). Recalibrate on real pairs.
@@ -38,6 +39,10 @@ class Finding:
     listing_crop: str | None = None
     unbox_crop: str | None = None
     reason: str = ""
+    listing_frame_id: str | None = None
+    received_frame_id: str | None = None
+    listing_label: str | None = None
+    received_label: str | None = None
 
 
 @dataclass
@@ -50,6 +55,7 @@ class UnboxResult:
     flags: list[str] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
     comparisons: list[dict] = field(default_factory=list)
+    policy_version: str = "region-correspondence-v1"
 
 
 def _near_identical(a: Path, b: Path) -> bool:
@@ -60,11 +66,13 @@ def _near_identical(a: Path, b: Path) -> bool:
 
 def check(record: ConditionRecord, listing_frames: dict[str, Path], pairs: list[tuple[str, Path]], work: Path,
           seed: int | None = None, *, reference_masks: dict[str, np.ndarray] | None = None,
-          require_garment_focus: bool = False) -> UnboxResult:
+          require_garment_focus: bool = False, received_labels: dict[str, str] | None = None,
+          listing_labels: dict[str, str] | None = None) -> UnboxResult:
     """pairs: (listing_frame_id, unbox_frame_path) matched upstream (unbox/pair.py)."""
     work.mkdir(parents=True, exist_ok=True)
     res = UnboxResult(verdict="consistent", pairs_total=len({fid for fid, _ in pairs}))
     aligned: dict[str, Path] = {}
+    sources: dict[str, dict] = {}
     masks: dict[str, np.ndarray] = {}
     failed_views: set[str] = set()
     replayed_views: set[str] = set()
@@ -74,18 +82,39 @@ def check(record: ConditionRecord, listing_frames: dict[str, Path], pairs: list[
         if fid in aligned or fid in replayed_views:
             continue
         ref = listing_frames[fid]
+        photo = re.search(r"(?:^|_)p(\d+)$", fid)
+        label = f"Seller photo {photo[1]} · {fid}" if photo else f"Listing view {fid}"
+        source = {"listing_frame_id": fid, "received_frame_id": ub.name,
+                  "listing_label": (listing_labels or {}).get(fid, label),
+                  "received_label": (received_labels or {}).get(str(ub), f"Received image {ub.name}")}
         if _near_identical(ref, ub):
             replayed_views.add(fid)
             res.flags.append("replayed_listing_media")
-            res.findings.append(Finding("replay", "unbox frame matches listing frame pixel-for-pixel", [0, 0, 1000, 1000]))
+            res.findings.append(Finding("replay", "Near-identical listing and received images", [0, 0, 1000, 1000],
+                str(ref), str(ub), "These images are nearly identical after resizing. They do not establish an independent received-garment capture.", **source))
             continue
         focus = (reference_masks or {}).get(fid)
         a = align(ref, ub, reference_mask=focus) if focus is not None else align(ref, ub)
         if a.ok and a.warped_path:
+            if require_garment_focus:
+                if not getattr(a, "garment_focused", False):
+                    res.limitations.append(f"Listing view {fid} has no usable garment outline; background correspondence cannot establish garment correspondence.")
+                    failed_views.add(fid)
+                    continue
+                try:
+                    correspondence = judge.correspondence(ref, a.warped_path)
+                except Exception:
+                    res.limitations.append(f"Region correspondence check unavailable for listing view {fid}; no defect conclusion was drawn.")
+                    failed_views.add(fid)
+                    continue
+                if not correspondence.comparable:
+                    failed_views.add(fid)
+                    res.comparisons.append({"kind": "unmatched_view", "what": "Views could not be matched",
+                        "listing_crop": str(ref), "unbox_crop": str(ub), "unsure": True, "comparable": False,
+                        "reason": correspondence.reason, **source})
+                    continue
             aligned[fid] = a.warped_path
-            if require_garment_focus and not getattr(a, "garment_focused", False):
-                unsure += 1
-                res.limitations.append(f"Listing view {fid} has no usable garment outline; background correspondence cannot establish garment correspondence.")
+            sources[fid] = source
             if getattr(a, "method", "akaze") == "sift":
                 # Real shared-background controls can pass SIFT on different
                 # garments. Keep fallback comparisons provisional for review.
@@ -99,7 +128,7 @@ def check(record: ConditionRecord, listing_frames: dict[str, Path], pairs: list[
                 masks[fid] = mask
             res.comparisons.append({"kind": "aligned_view", "what": f"Compared view {fid}",
                                     "listing_crop": str(ref), "unbox_crop": str(a.warped_path),
-                                    "reason": f"Aligned view ({getattr(a, 'method', 'akaze')}), not proof of garment identity."})
+                                    "reason": "Provisional aligned view; this does not establish garment identity.", **source})
         else:
             failed_views.add(fid)
     for fid in sorted(failed_views - aligned.keys() - replayed_views):
@@ -113,21 +142,18 @@ def check(record: ConditionRecord, listing_frames: dict[str, Path], pairs: list[
         for b in c.evidence:
             if b.frame_id in aligned and valid_box(b.box_2d):
                 mask = masks.get(b.frame_id)
-                if mask is not None:
-                    h, w = mask.shape
-                    y0, x0, y1, x1 = b.box_2d
-                    area = mask[int(y0*h/1000):int(np.ceil(y1*h/1000)), int(x0*w/1000):int(np.ceil(x1*w/1000))]
-                    if not area.size or float(np.mean(area > 0)) < 0.95:
-                        continue  # try another evidence box; never call a black border a missing flaw
+                if mask is not None and not comparable_box(mask, b.box_2d):
+                    continue  # include the padded context, not only the inner box
                 ca, cb = crop_pair(listing_frames[b.frame_id], aligned[b.frame_id], b.box_2d, out_dir=work / b.frame_id)
                 v = judge.flaw_still_there(ca, cb, f"{c.severity.value} {c.code} on {c.region}")
                 res.comparisons.append({"kind": "existing_flaw", "what": f"Listed {c.code} on {c.region}",
-                                        "listing_crop": str(ca), "unbox_crop": str(cb), **v.model_dump()})
-                if v.unsure:
+                                        "listing_crop": str(ca), "unbox_crop": str(cb), **v.model_dump(),
+                                        "unsure": v.unsure or not v.comparable, **sources[b.frame_id]})
+                if v.unsure or not v.comparable:
                     unsure += 1
-                if not v.still_visible and not v.unsure:
+                if not v.still_visible and not v.unsure and v.comparable:
                     res.findings.append(Finding("flaw_missing", f"listed {c.code} on {c.region} not found", b.box_2d,
-                                                str(ca), str(cb), v.reason))
+                                                str(ca), str(cb), v.reason, **sources[b.frame_id]))
                 break
         else:
             res.limitations.append(f"Listed {c.code} on {c.region} could not be checked.")
@@ -145,14 +171,19 @@ def check(record: ConditionRecord, listing_frames: dict[str, Path], pairs: list[
         for r in regions:
             if r.score < MIN_CHANGE_SCORE:
                 continue  # below the noise floor measured in tests/test_cv.py; don't spend a Gemini call
+            if mask is not None and not comparable_box(mask, r.box_2d):
+                unsure += 1
+                res.limitations.append(f"A candidate crop in listing view {fid} extends outside supported alignment; no defect conclusion was drawn.")
+                continue
             ca, cb = crop_pair(listing_frames[fid], warped, r.box_2d, out_dir=work / fid)
             v = judge.compare(ca, cb)
             res.comparisons.append({"kind": "candidate_change", "what": f"Candidate change in {fid}",
-                                    "listing_crop": str(ca), "unbox_crop": str(cb), **v.model_dump()})
-            if v.unsure:
+                                    "listing_crop": str(ca), "unbox_crop": str(cb), **v.model_dump(),
+                                    "unsure": v.unsure or not v.comparable, **sources[fid]})
+            if v.unsure or not v.comparable:
                 unsure += 1
             elif v.new_defect and v.severity in ("minor", "major"):
-                res.findings.append(Finding("new_defect", f"new {v.severity} {v.code}", r.box_2d, str(ca), str(cb), v.reason))
+                res.findings.append(Finding("new_defect", f"new {v.severity} {v.code}", r.box_2d, str(ca), str(cb), v.reason, **sources[fid]))
 
     if res.flags or any(f.kind in ("new_defect", "flaw_missing") for f in res.findings):
         res.verdict = "differs" if not res.flags else "cant_tell"

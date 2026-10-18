@@ -28,7 +28,12 @@ export type ConditionRecord = {
   capture: { code_seen: boolean; frames: string[]; created_at: string };
   listing_text_en: string;
 };
+export type ListingMedia = { kind: "photo" | "video"; label: string; url: string };
 export type Listing = { id: string; en: string; evidence_badge?: string;
+  media?: ListingMedia[]; asking_price?: number | null; purchase_price?: number | null;
+  price_source?: string; currency?: string; negotiation_enabled?: boolean;
+  seller_managed?: boolean;
+  purchase_available?: boolean;
   publication_status?: string; seller_limitations?: string[];
   capture_coverage?: { views: { region: string; status: string; note: string; evidence: Box[] }[];
     needs_more_evidence: boolean; guidance: string[]; limitation: string };
@@ -43,9 +48,11 @@ export type SearchCard = {
   price_band: [number, number] | null;
   currency: string;
   shown_flaws: { code: string; region: string; severity: string }[];
+  declared_flaws?: { code: string; region: string; severity: string }[];
   cant_judge: string[];
   evidence_badge: string;
   summary_line: string;
+  media?: ListingMedia[]; purchase_price?: number | null; price_source?: string; negotiation_enabled?: boolean;
 };
 export type Finding = {
   kind: string;
@@ -54,8 +61,11 @@ export type Finding = {
   listing_crop: string | null;
   unbox_crop: string | null;
   reason: string;
+  listing_label?: string | null; received_label?: string | null;
+  listing_frame_id?: string | null; received_frame_id?: string | null; comparable?: boolean;
 };
 export type UnboxResult = {
+  policy_version?: string;
   verdict: "consistent" | "differs" | "cant_tell";
   findings: Finding[];
   closeup_request: string | null;
@@ -116,7 +126,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let msg = res.statusText;
     try {
       const j = await res.json();
-      msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail ?? j);
+      msg = typeof j.detail === "string" ? j.detail : Array.isArray(j.detail) ? j.detail.map((error: { msg?: string }) => error.msg ?? "Check the supplied values.").join(" ") : "The service could not complete this request.";
     } catch {}
     throw new ApiError(res.status, msg);
   }
@@ -146,11 +156,15 @@ export const getListing = (id: string) => call<Listing>(`/listings/${encodeURICo
 export const recordUrl = (id: string) => `${API_BASE}/records/${encodeURIComponent(id)}`;
 export const ask = (item_id: string, question: string) => call<Answer>("/ask", json({ item_id, question }));
 export const agentChat = (session_id: string, message: string) => call<AgentReply>("/agent/chat", json({ session_id, message }));
-export const createEscrow = (item_id: string, amount: number, currency = "JPY") =>
-  call<Mandate>("/escrow", json({ item_id, payer: "buyer", amount, currency }));
+export const createEscrow = (item_id: string, amount: number, currency = "INR", quote_id?: string) =>
+  call<Mandate>("/escrow", json({ item_id, payer: "buyer", amount, currency, quote_id }));
+export type Offer = { status: string; price: number; currency: string; item_id: string;
+  quote_id?: string; negotiation_id?: string; round?: number; max_rounds?: number; note?: string };
+export const makeOffer = (item_id: string, amount: number, negotiation_id = "") =>
+  call<Offer>("/offers", json({ item_id, amount, negotiation_id }));
 export const getEscrow = (id: string) => call<Mandate>(`/escrow/${encodeURIComponent(id)}`);
 export const acceptDelivery = (id: string) => call<Mandate>(`/escrow/${encodeURIComponent(id)}/accept`, json({}));
-export const getIssues = (itemId: string) => call<IssueReport[]>(`/issues?item_id=${encodeURIComponent(itemId)}`);
+export const getIssues = (itemId?: string) => call<IssueReport[]>(itemId ? `/issues?item_id=${encodeURIComponent(itemId)}` : "/issues");
 export const getIssue = (id: string) => call<IssueReport>(`/issues/${encodeURIComponent(id)}`);
 export const submitIssue = (itemId: string, buyerText: string, mandateId: string | null, video?: Blob | null, photos?: File[]) =>
   call<IssueReport>("/issues", { method: "POST", body: form({ item_id: itemId, buyer_text: buyerText, mandate_id: mandateId ?? "" }, video, photos) });
@@ -165,6 +179,7 @@ export const postTake = (code: string, video?: Blob | null, photos?: File[]) =>
 
 export type SellerIssue = { code: string; region: string; description: string };
 export type SellerDraft = { id: string; status: string; revision: number;
+  asking_price?: number | null; currency?: string; negotiation_enabled?: boolean;
   answer: "issues_reported" | "none_known" | "unknown" | null; issues: SellerIssue[];
   record: ConditionRecord; limitations: string[]; guidance: string[];
   attempts: { id: string; status: string; created_at: string; error?: string;
@@ -176,6 +191,8 @@ export const addSellerEvidence = (id: string, revision: number, photos: File[], 
   call<SellerDraft>(`/seller/drafts/${encodeURIComponent(id)}/evidence`, { method: "POST", body: form({ revision: String(revision) }, video, photos) });
 export const publishSellerDraft = (id: string, revision: number, acknowledge_limitations: boolean) =>
   call<SellerDraft>(`/seller/drafts/${encodeURIComponent(id)}/publish`, json({ revision, acknowledge_limitations }));
+export const saveSellerPrice = (id: string, revision: number, asking_price: number, negotiation_enabled: boolean, minimum_price?: number) =>
+  call<SellerDraft>(`/seller/drafts/${encodeURIComponent(id)}/price`, json({ revision, asking_price, currency: "INR", negotiation_enabled, minimum_price }));
 
 /* ---------- media ---------- */
 export const frameUrl = (itemId: string, frameId: string) => `${API_BASE}/media/${encodeURIComponent(itemId)}/${frameId}.jpg`;
@@ -196,12 +213,12 @@ export function cropUrl(itemId: string, serverPath: string | null | undefined): 
 }
 
 /* ---------- small helpers ---------- */
-export const yen = (n: number, cur = "JPY") =>
-  cur === "JPY" ? `¥${Math.round(n).toLocaleString("en-US")}` : `${cur} ${Math.round(n).toLocaleString("en-US")}`;
-export const band = (b: [number, number] | null, cur = "JPY") => (b ? `${yen(b[0], cur)}–${yen(b[1], cur)}` : "No estimate");
+export const yen = (n: number, cur = "INR") => new Intl.NumberFormat("en-IN", {
+  style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
 export const gradeRange = (g: number[]) =>
   g.length ? (Math.min(...g) === Math.max(...g) ? `Grade ${g[0]} of 5` : `Grade ${Math.min(...g)}–${Math.max(...g)} of 5`) : "Grade not set";
 export const words = (s: string) => s.replace(/_/g, " ");
+export const sentence = (s: string) => { const text = words(s).trim().replace(/([^.!?]) Visual confirmation/g, "$1. Visual confirmation"); return !text || /[.!?。！？]$/.test(text) ? text : `${text}.`; };
 export const itemName = (r: { item: ConditionRecord["item"] }) => [r.item.brand, r.item.colour, r.item.type].filter(Boolean).join(" ");
 
 /** Mandate ids are remembered per item so /unbox and /case can find the escrow. */

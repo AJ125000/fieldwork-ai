@@ -11,7 +11,7 @@ import { TopBar } from "@/components/TopBar";
 import { postTake } from "@/lib/api";
 import styles from "@/components/Flow.module.css";
 
-const STEPS = ["Reading the take", "Choosing evidence frames", "Writing the condition record", "Estimating a grade range and price band", "Translating the listing"];
+const STEPS = ["Reading the take", "Choosing evidence frames", "Writing the condition record", "Estimating the condition grade set", "Translating the listing"];
 
 /* One Take (brief): 12 seconds, one-time code in view. The code is generated here for now; the service will issue it later. */
 function newCode() {

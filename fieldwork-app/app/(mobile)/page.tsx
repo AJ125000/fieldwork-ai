@@ -7,9 +7,9 @@ import styles from "./home.module.css";
 
 const flows = [
   { href: "/sell", Icon: Film, title: "Sell: film one take", body: "12 seconds and a one-time code become a Garment Pass." },
-  { href: "/agent", Icon: Bot, title: "Buy: tell your agent", body: "It searches by evidence, asks the garment, and pays into escrow." },
+  { href: "/agent", Icon: Bot, title: "Buy: tell your agent", body: "Find a garment, inspect its photos and video, and confirm a simulated purchase." },
   { href: "/pass/fx_coat_navy_clean", Icon: ScanSearch, title: "Open a sample Pass", body: "Four lanes: shown, measured, declared, can't judge." },
-  { href: "/unbox/fx_coat_navy_clean", Icon: Scale, title: "Check received garment", body: "All good, or raise an issue. A person reviews the evidence while escrow stays held." },
+  { href: "/help", Icon: Scale, title: "Help and issue history", body: "Track pending human reviews, requested evidence and completed decisions." },
 ];
 
 /* Hub: one card per flow. */

@@ -41,7 +41,13 @@ def _save(m: Mandate) -> Mandate:
     return m
 
 
-def create(item_id: str, payer: str, payee: str, amount: int, currency: str) -> Mandate:
+def create(item_id: str, payer: str, payee: str, amount: int, currency: str, quote_id: str | None = None) -> Mandate:
+    from .seller_review import lock
+    with lock(item_id):
+        return _create(item_id, payer, payee, amount, currency, quote_id)
+
+
+def _create(item_id, payer, payee, amount, currency, quote_id):
     from .spec import ConditionRecord
     raw = store.get_json("records", item_id)
     if raw is None:
@@ -56,16 +62,20 @@ def create(item_id: str, payer: str, payee: str, amount: int, currency: str) -> 
     currency = currency.strip().upper()
     if currency != record.currency.upper():
         raise ValueError("Purchase currency must match the listing.")
-    if not record.price_band:
-        raise ValueError("This listing has no price band yet.")
-    lo, hi = record.price_band
-    floor = (store.get_json("floors", item_id) or {}).get("floor", 0)
-    if not max(lo, floor) <= amount <= hi:
-        raise ValueError("Purchase price is outside the seller's accepted range. Request a new quote.")
+    from .pricing import validate_purchase
+    validate_purchase(store, item_id, amount, currency, quote_id)
+    if any(m["item_id"] == item_id and m["status"] in ("held", "released", "partial") for m in store.list_json("mandates")):
+        raise ValueError("This garment already has a purchase. Open its delivery or issue report.")
     m = Mandate(id=f"md_{uuid.uuid4().hex[:10]}", item_id=item_id, payer=payer, payee=payee, amount=amount, currency=currency)
     m.signature = _sign(m)
     m.events.append({"t": time.time(), "event": "held", "by": payer})
-    return _save(m)
+    _save(m)
+    if quote_id:
+        quote = store.get_json("quotes", quote_id)
+        if quote:
+            quote["mandate_id"] = m.id
+            store.put_json("quotes", quote_id, quote)
+    return m
 
 
 def get(mandate_id: str) -> Mandate:

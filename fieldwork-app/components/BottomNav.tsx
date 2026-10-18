@@ -10,7 +10,7 @@ const items = [
   { id: "buy", label: "Buy", href: "/agent", Icon: ShoppingBag, match: (p: string) => p.startsWith("/agent") || p.startsWith("/pass") || p.startsWith("/unbox") },
   { id: "capture", label: "Capture", href: "/sell", Icon: Camera, match: (p: string) => p === "/sell", centre: true },
   { id: "sell", label: "Sell", href: "/sell", Icon: Tag, match: (p: string) => p === "/sell" },
-  { id: "help", label: "Help", href: "/case/fx_coat_navy_clean", Icon: CircleHelp, match: (p: string) => p.startsWith("/case") },
+  { id: "help", label: "Help", href: "/help", Icon: CircleHelp, match: (p: string) => p.startsWith("/case") || p === "/help" },
 ] as const;
 
 /* Home, Buy, centre Capture, Sell, Help. Active = weight + top marker + colour, never colour alone. */

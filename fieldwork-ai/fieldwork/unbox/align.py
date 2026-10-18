@@ -74,6 +74,11 @@ def _align_method(ref_path: str | Path, img_path: str | Path, method: str, refer
         return AlignResult(False, None, 0, 0.0, None)
     pairs = cv2.BFMatcher(cv2.NORM_HAMMING if method == "akaze" else cv2.NORM_L2).knnMatch(di, dr, k=2)
     good = [m for p in pairs if len(p) == 2 for m, n in [p] if m.distance < 0.8 * n.distance]
+    # Repeated fabric textures must not map many received points onto one seam.
+    unique = {}
+    for match in sorted(good, key=lambda match: match.distance):
+        unique.setdefault(match.trainIdx, match)
+    good = list(unique.values())
     if len(good) < 8:
         return AlignResult(False, None, 0, 0.0, None)
     src = np.float32([ki[m.queryIdx].pt for m in good])
@@ -100,6 +105,13 @@ def _align_method(ref_path: str | Path, img_path: str | Path, method: str, refer
         if reference_mask is not None:
             garment_mask = cv2.resize((reference_mask > 0).astype(np.uint8)*255, (full_ref.shape[1], full_ref.shape[0]), interpolation=cv2.INTER_NEAREST)
             valid = cv2.bitwise_and(valid, garment_mask)
+            # A homography fitted to one tiny detail cannot establish correspondence
+            # elsewhere (for example, extrapolating a neckline onto a side seam).
+            support = np.zeros(full_ref.shape[:2], np.uint8)
+            points = dst[mask.ravel().astype(bool)] / s_ref
+            hull = cv2.convexHull(points.astype(np.float32)).astype(np.int32)
+            cv2.fillConvexPoly(support, hull, 255)
+            valid = cv2.bitwise_and(valid, support)
             overlap = float(np.count_nonzero(valid) / max(1, np.count_nonzero(garment_mask)))
         if overlap < 0.3:
             return AlignResult(False, H_full, inliers, float(ratio), None, method, None, overlap)

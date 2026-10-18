@@ -81,8 +81,8 @@ class ConditionRecord(BaseModel):
     claims: list[Claim]
     grade_set: list[int] = []  # conformal set from our model, e.g. [3, 4]
     grade_model: str = "fieldwork-siglip2-ordinal-v0"
-    price_band: tuple[int, int] | None = None
-    currency: str = "JPY"
+    price_band: tuple[int, int] | None = None  # legacy compatibility: (seller asking price, same price), never an estimate
+    currency: str = "INR"
     capture: Capture
     listing_text_en: str = ""
 

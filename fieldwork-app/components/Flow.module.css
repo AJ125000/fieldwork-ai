@@ -1,5 +1,10 @@
 /* Shared layout for the Garment Pass flows. Tokens only. */
 .main { display: flex; flex-direction: column; gap: var(--fw-space-6); padding: var(--fw-space-5) var(--fw-page-gutter-mobile) var(--fw-space-8); }
+.formatted { overflow-wrap: anywhere; display: flex; flex-direction: column; gap: var(--fw-space-3); }
+.formatted p, .formatted ul, .formatted ol { margin: 0; }
+.formatted ul, .formatted ol { padding-left: var(--fw-space-5); }
+.formatted li + li { margin-top: var(--fw-space-2); }
+.bullets { margin: 0; padding-left: var(--fw-space-5); display: grid; gap: var(--fw-space-2); }
 .evidenceGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--fw-space-3); }
 .evidenceGrid figure { margin: 0; }
 .evidenceGrid img, .evidenceGrid video { width: 100%; max-height: 320px; object-fit: contain; border-radius: var(--fw-radius-card); }

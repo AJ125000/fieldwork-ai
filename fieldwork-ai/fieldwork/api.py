@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from . import ask as ask_mod
 from . import escrow, market, human_review as reviews
 from . import seller_review
+from . import pricing
 from .spec import ConditionRecord
 from .store import store
 
@@ -90,6 +91,27 @@ def seller_publish(item_id: str, body: seller_review.PublishIn):
     return _seller_call(seller_review.publish, item_id, body)
 
 
+@app.post("/seller/drafts/{item_id}/price")
+def seller_price(item_id: str, body: pricing.PriceIn):
+    return _seller_call(seller_review.set_price, item_id, body)
+
+
+class OfferIn(BaseModel):
+    item_id: str
+    amount: int = Field(gt=0, strict=True)
+    negotiation_id: str = ""
+
+
+@app.post("/offers")
+def buyer_offer(body: OfferIn):
+    _record(body.item_id)
+    try:
+        with seller_review.lock(body.item_id):
+            return pricing.offer(store, body.item_id, body.amount, body.negotiation_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @app.post("/seller/drafts/{item_id}/evidence")
 async def seller_evidence(item_id: str, revision: int = Form(..., ge=1), code: str = Form(""),
                           video: UploadFile | None = File(None), photos: list[UploadFile] = File(default=[])):
@@ -108,7 +130,8 @@ async def seller_evidence(item_id: str, revision: int = Form(..., ge=1), code: s
 
 @app.get("/records/{item_id}")
 def get_record(item_id: str):
-    return _record(item_id).public().model_dump(mode="json")
+    from .catalog import public_record
+    return public_record(store, _record(item_id)).model_dump(mode="json")
 
 
 @app.get("/listings/{item_id}")
@@ -116,15 +139,23 @@ def get_listing(item_id: str):
     l = store.get_json("listings", item_id)
     if l is None:
         raise HTTPException(404, f"unknown listing {item_id}")
-    return l
+    from .catalog import listing_media, purchase_price, purchased_items
+    record = _record(item_id)
+    l = {k: v for k, v in l.items() if k != "price_note"}
+    return {**l, "media": listing_media(store, record, l), "purchase_price": purchase_price(store, record),
+            "currency": "INR", "price_source": l.get("price_source", "unset"),
+            "purchase_available": item_id not in purchased_items(store),
+            "seller_managed": store.get_json("seller_drafts", item_id) is not None}
 
 
 @app.get("/search")
 def search(type: str | None = None, colour: str | None = None, max_price: int | None = None, min_grade: int | None = None,
-           exclude_defects: str | None = None, size_label: str | None = None):
+           exclude_defects: str | None = None, size_label: str | None = None,
+           brand: str | None = None, currency: str | None = None):
     """exclude_defects is comma-separated, e.g. stain,hole."""
     return market.search({"type": type, "colour": colour, "max_price": max_price, "min_grade": min_grade,
-                          "exclude_defects": [x for x in (exclude_defects or "").split(",") if x], "size_label": size_label})
+                          "exclude_defects": [x for x in (exclude_defects or "").split(",") if x], "size_label": size_label,
+                          "brand": brand, "currency": currency})
 
 
 class AskIn(BaseModel):
@@ -145,7 +176,10 @@ class ChatIn(BaseModel):
 @app.post("/agent/chat")
 async def agent_chat(body: ChatIn):
     from .agents.buyer import chat
-    return await chat(body.session_id, body.message)
+    try:
+        return await chat(body.session_id, body.message)
+    except Exception as exc:
+        raise HTTPException(503, "The shopping agent is temporarily unavailable. Try again in a moment.") from exc
 
 
 @app.post("/seller/chat")
@@ -161,8 +195,7 @@ class FloorIn(BaseModel):
 
 @app.post("/seller/floor")
 def seller_floor(body: FloorIn):
-    from .agents.seller import set_floor
-    return set_floor(body.item_id, body.floor)
+    raise HTTPException(410, "Set the asking price and optional private minimum through the seller pricing step.")
 
 
 @app.post("/tryon")
@@ -198,8 +231,10 @@ async def _inspect_issue(report, video, photos):
         v = await _save_upload(video, d) if video else None
         ps = [await _save_upload(p, d) for p in photos]
         report = reviews.get(report.id)
-        report.media += [{"label": "Received garment", "url": store.media_url(report.item_id, p.relative_to(store.item_dir(report.item_id)).as_posix())}
-                         for p in ([v] if v else []) + ps]
+        attempt_number = 1 + sum(e.get("event") == "additional_evidence" for e in report.history)
+        report.media += [{"label": f"Received video · capture {attempt_number}", "url": store.media_url(report.item_id, v.relative_to(store.item_dir(report.item_id)).as_posix())}] if v else []
+        report.media += [{"label": f"Received photo {i+1} · capture {attempt_number}", "url": store.media_url(report.item_id, p.relative_to(store.item_dir(report.item_id)).as_posix())}
+                         for i, p in enumerate(ps)]
         reviews.save(report)
         await run_in_threadpool(store.sync_item, report.item_id)
         rec = ConditionRecord(**report.listing)
@@ -228,8 +263,10 @@ async def issue(item_id: str = Form(...), buyer_text: str = Form(""), mandate_id
 
 
 @app.get("/issues")
-def issues_for_item(item_id: str):
-    _record(item_id)
+def issues_for_item(item_id: str | None = None):
+    # Shared prototype history; production requires an authenticated buyer scope.
+    if item_id is not None:
+        _record(item_id)
     return [r.model_dump(mode="json") for r in reviews.list_reports(item_id)]
 
 
@@ -288,15 +325,16 @@ class EscrowIn(BaseModel):
     item_id: str
     payer: str = "buyer"
     payee: str | None = None
-    amount: int = Field(gt=0)
-    currency: str = "JPY"
+    amount: int = Field(gt=0, strict=True)
+    currency: str = "INR"
+    quote_id: str | None = None
 
 
 @app.post("/escrow")
 def escrow_create(body: EscrowIn):
     _record(body.item_id)
     try:
-        return escrow.create(body.item_id, body.payer, body.payee or "seller", body.amount, body.currency).model_dump()
+        return escrow.create(body.item_id, body.payer, body.payee or "seller", body.amount, body.currency, body.quote_id).model_dump()
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 

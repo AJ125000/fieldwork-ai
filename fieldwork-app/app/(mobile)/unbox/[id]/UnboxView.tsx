@@ -29,10 +29,23 @@ export function UnboxView({ id }: { id: string }) {
     setMid(known);
     Promise.all([getRecord(id), getIssues(id), known ? getEscrow(known) : Promise.resolve(null)]).then(([r, issues, m]) => {
       if (!live) return;
-      setRec(r); setReport(issues[0] ?? null); setMandate(m); setReady(true);
+      if (m && m.item_id !== id) throw new Error("This escrow belongs to another garment. Open the correct purchase.");
+      setRec(r); setReport((known ? issues.find(issue => issue.mandate_id === known) : issues[0]) ?? null); setMandate(m); setReady(true);
     }).catch((e: Error) => { if (live) setError(e.message); });
     return () => { live = false; };
   }, [id]);
+
+  useEffect(() => {
+    if (!report?.id) return;
+    let live = true;
+    const timer = setInterval(async () => {
+      try {
+        const [issues, current] = await Promise.all([getIssues(id), mid ? getEscrow(mid) : Promise.resolve(null)]);
+        if (live) { setReport(issues.find(issue => issue.id === report.id) ?? report); if (current) setMandate(current); }
+      } catch { /* Keep the saved report visible while the service reconnects. */ }
+    }, 10000);
+    return () => { live = false; clearInterval(timer); };
+  }, [id, mid, report?.id]);
 
   async function allGood() {
     setBusy(true); setError("");
@@ -46,12 +59,12 @@ export function UnboxView({ id }: { id: string }) {
   async function submit(clip: Blob | null) {
     setBusy(true); setError("");
     try {
-      const r = await submitIssue(id, text.trim(), mid, clip, clip ? undefined : photos);
+      const r = await submitIssue(id, text.trim(), mid, clip, photos.length ? photos : undefined);
       setReport(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not submit your issue.");
       // Recover a queued report if the request completed but its response was lost.
-      try { const reports = await getIssues(id); if (reports[0]) setReport(reports[0]); } catch {}
+      try { const reports = await getIssues(id); const queued = mid ? reports.find(r => r.mandate_id === mid) : reports[0]; if (queued) setReport(queued); } catch {}
     } finally { setBusy(false); }
   }
 
@@ -73,13 +86,14 @@ export function UnboxView({ id }: { id: string }) {
         <Button href={`/case/${id}?issue=${report.id}`} fullWidth>Open your report</Button>
       </> : ready && !busy && (mandate && mandate.status !== "held" ? <p className="t-body">This purchase has already been settled.</p> : mode === "choose" ? <section className={styles.section}>
         <p className="t-body">Check the garment. Accept it if everything is good, or raise an issue for a person to review.</p>
-        <Button fullWidth onClick={allGood}>All good</Button>
+        <Button fullWidth disabled={!mandate} onClick={allGood}>All good</Button>
+        {!mandate && <p className="t-body-s">No purchase is attached. <a href={`/pass/${id}`}>Open the listing to purchase</a>. You can still submit evidence for a demo review.</p>}
         <Button fullWidth variant="secondary" onClick={() => setMode("issue")}>Raise an issue</Button>
       </section> : <section className={styles.section}>
         <h2 className="t-heading-s">What went wrong?</h2>
         <label htmlFor="buyer-issue" className="t-label">Describe the issue (optional)</label>
         <textarea id="buyer-issue" rows={3} maxLength={5000} className={styles.field} value={text} onChange={e => setText(e.target.value)} placeholder="There is a stain on the left cuff that was not shown in the listing." />
-        <p className="t-body-s">Record the front, back, collar, cuffs, hem and the area you are concerned about. Your evidence and the inspection suggestion go to a human. Escrow stays held.</p>
+        <p className="t-body-s">Record the front, back, collar, cuffs, hem and the area you are concerned about. Your evidence and the inspection suggestion go to a human.{mandate ? " Escrow stays held." : " No escrow is attached to this demo review."}</p>
         <CameraCapture seconds={12} recordLabel="Record received garment" idleText="Hold the camera steady with good light." onRecorded={clip => submit(clip)} />
         <label htmlFor="received-photos" className="t-label">Or upload received-garment photos</label>
         <input id="received-photos" className={styles.field} type="file" accept="image/*" multiple onChange={e => setPhotos(Array.from(e.target.files ?? []))} />

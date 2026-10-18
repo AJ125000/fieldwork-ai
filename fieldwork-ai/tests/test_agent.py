@@ -15,6 +15,11 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     import logging; logging.disable(logging.INFO)
     ids = market.seed_fixtures()
+    from fieldwork.store import store
+    for item in ids:
+        listing=store.get_json("listings",item)
+        listing.update(price_source="seller",asking_price=1500,currency="INR",negotiation_enabled=False)
+        store.put_json("listings",item,listing)  # explicitly chosen test-actor prices, no estimate
     assert len(ids) == 6
 
     cards = market.search({"type": "coat", "colour": "navy", "max_price": 6000, "exclude_defects": ["stain"]})
@@ -37,7 +42,7 @@ def main():
     assert a["state"] in ("shown", "not_in_take", "cant_judge")
 
     from fieldwork.agents.buyer import chat
-    out = asyncio.run(chat("t1", "Find me a navy wool coat with no stains under 6000 yen"))
+    out = asyncio.run(chat("t1", "Find me a navy wool coat with no stains under 6000 rupees"))
     print("AGENT model:", out.get("model"))
     for t in out["tool_calls"]:
         print("  tool:", t["tool"], json.dumps(t["args"], ensure_ascii=False))

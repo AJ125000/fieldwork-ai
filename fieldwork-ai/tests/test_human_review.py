@@ -21,11 +21,12 @@ def setup(tmp_path, monkeypatch):
     for mod in (api, escrow, human_review, pipeline):
         monkeypatch.setattr(mod, "store", storage)
     monkeypatch.setenv("FW_REVIEW_TOKEN", "test-review-key")
-    record = ConditionRecord(id="coat", item=Item(type="coat", colour="navy"), claims=[], price_band=(100, 10000),
+    record = ConditionRecord(id="coat", item=Item(type="coat", colour="navy"), claims=[], price_band=(5000, 5000), currency="INR",
                              capture=Capture(code_expected="TEST", code_seen=True, take_sha256="hash", frames=["f1"]))
     storage.put_json("records", "coat", record.model_dump(mode="json"))
+    storage.put_json("listings", "coat", {"id":"coat", "price_source":"seller", "asking_price":5000, "currency":"INR"})
     (storage.item_dir("coat") / "f1.jpg").write_bytes(b"listing")
-    mandate = escrow.create("coat", "buyer", "seller", 5000, "JPY")
+    mandate = escrow.create("coat", "buyer", "seller", 5000, "INR")
     return TestClient(api.app), storage, mandate, record
 
 
@@ -123,7 +124,8 @@ def test_validation_and_disabled_review_access(setup, monkeypatch):
     assert client.get("/review").status_code == 503
     assert client.post("/issues", data={"item_id": "coat"}).status_code == 400
     storage.put_json("records", "other", record.model_copy(update={"id": "other"}).model_dump(mode="json"))
-    other = escrow.create("other", "buyer", "seller", 100, "JPY")
+    storage.put_json("listings", "other", {"id":"other", "price_source":"seller", "asking_price":100, "currency":"INR"})
+    other = escrow.create("other", "buyer", "seller", 100, "INR")
     assert capture(client, other).status_code == 409
     assert not storage.list_json("issues")
     assert client.post("/case", json={"item_id": "coat", "amount": 5000}).status_code == 410

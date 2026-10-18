@@ -5,11 +5,11 @@ A local prototype for evidence-backed second-hand garment listings and human rev
 ## Current workflow
 
 1. Seller records a garment video and/or supplies photos.
-2. Gemini creates an evidence-linked condition record. SigLIP 2 and small trained heads provide an estimated grade range and price band.
-3. The seller reviews the unpublished draft, declares known issues, adds evidence if needed, acknowledges limitations and explicitly publishes it.
-4. Buyers search listings and ask evidence-grounded questions. Payment mandates are simulated.
+2. Gemini creates an evidence-linked condition record. SigLIP 2 and small trained heads provide a condition grade set; grades do not determine prices.
+3. The seller reviews the unpublished draft, declares known issues, adds evidence if needed, sets an INR asking price and optional private negotiation minimum, acknowledges limitations and explicitly publishes it.
+4. Buyers see photos/video, search by seller asking price and ask evidence-grounded questions. Negotiated quotes require explicit purchase confirmation; payment mandates are simulated.
 5. Explicit **All good** releases the simulated payment. **Raise an issue** captures received-garment evidence and opens human review.
-6. SigLIP pairing, geometric alignment, DINOv2/colour proposals and Gemini crop judgments prepare a suggested assessment and evidence report. Every issue keeps funds held until a human decision; an AI assessment cannot settle it.
+6. SigLIP pairing, garment-focused geometric alignment, Gemini region correspondence checks, DINOv2/colour proposals and Gemini crop judgments prepare a suggested assessment and evidence report. Every issue keeps funds held until a human decision; an AI assessment cannot settle it.
 
 The experimental regional defect and context-confirmation sequence is evaluated separately and is **not enabled in the production seller pipeline**. Context-model agreement is not independent ground truth.
 
@@ -43,6 +43,12 @@ Open http://localhost:3000. Open `/review` for the reviewer console and enter th
 
 Public SigLIP 2 and DINOv2-small checkpoints download to the Hugging Face cache on first use. `fieldwork-ai/models/heads.joblib` is the small runtime classifier artifact; candidate experiment artifacts are separate and excluded. No DINOv3 access is needed.
 
+The seller sets the asking price in INR; automatic price estimates and demo currency conversions are removed. Negotiation is optional, bounded to five rounds per negotiation, and uses backend rules. A negotiated quote expires after 30 minutes and must be explicitly confirmed. An existing estimated band is not a purchase price: older seller-managed listings need an explicit asking price.
+
+Open `/help` for pending reports and issue history. The local prototype history is shared; buyer ownership authentication remains unfinished. Existing funded test mandates keep their original amounts/currencies and are not converted.
+
+See [the local workflow audit](LOCAL-WORKFLOW-AUDIT.md) for the ten reported issues, fixes, evidence and remaining limitations.
+
 ## Code and documentation
 
 | Path | Purpose |
@@ -69,7 +75,7 @@ From `fieldwork-ai/` in the active environment:
 python -m pytest tests/test_defect_sequence.py tests/test_regional_defects.py tests/test_image_orientation.py tests/test_evidence_integrity.py -q
 ```
 
-The latest run passed 35 focused software checks. They check evidence/state handling, not model accuracy. Other tests may require local datasets, model downloads or live Gemini access; read the relevant evaluator instructions before running them.
+The local audit passed 147 regression checks and 12 separately run legacy harness checks, plus a frontend production build and an isolated live seller-to-human-review test. They check evidence/state handling, not model accuracy. Other tests may require local datasets, model downloads or live Gemini access; read the relevant evaluator instructions before running them.
 
 ## Current limits
 

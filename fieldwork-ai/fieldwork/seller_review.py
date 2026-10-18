@@ -78,6 +78,11 @@ class PublishIn(BaseModel):
     acknowledge_limitations: bool = False
 
 
+def _sentence(text):
+    text = text.strip()
+    return text if not text or text[-1] in ".!?。！？" else text + "."
+
+
 def _load(storage, item_id):
     meta = storage.get_json("seller_drafts", item_id)
     if meta is None:
@@ -126,6 +131,11 @@ def _project(storage, meta):
             note="Seller reports no known issues; this does not establish absence of defects." if answer == "none_known"
             else "Seller is unsure of the garment's condition; further evidence may be needed."))
     listing = deepcopy(attempt["listing"])
+    frame_sources = listing.setdefault("frame_sources", {})
+    for earlier in meta["attempts"]:
+        for fid, label in (earlier.get("listing", {}).get("frame_sources", {})).items():
+            if fid in record.capture.frames:
+                frame_sources.setdefault(fid, label)
     coverage = listing.get("capture_coverage") or {}
     limitations = ["Assessment is limited to supplied evidence; small or hidden defects may not be visible."]
     for view in coverage.get("views", []):
@@ -134,7 +144,7 @@ def _project(storage, meta):
     if answer == "unknown":
         limitations.append("Seller is unsure whether additional issues exist.")
     for issue in meta.get("issues", []):
-        limitations.append(f"Seller-reported {issue['code'].replace('_', ' ')} on {issue['region'].replace('_', ' ')}: {issue['description']} Visual confirmation is not established by this disclosure.")
+        limitations.append(f"Seller-reported {issue['code'].replace('_', ' ')} on {issue['region'].replace('_', ' ')}: {_sentence(issue['description'])} Visual confirmation is not established by this disclosure.")
     shown = [c for c in record.claims if c.lane == Lane.shown and c.severity != Severity.none]
     sentences = [f"Second-hand {record.item.type}. Condition assessment is limited to the supplied views."]
     if shown:
@@ -142,12 +152,17 @@ def _project(storage, meta):
     else:
         sentences.append("No visible defect was identified in these views; this does not rule out hidden defects.")
     for issue in meta.get("issues", []):
-        sentences.append(f"Seller reports {issue['code'].replace('_', ' ')} on {issue['region'].replace('_', ' ')}: {issue['description']}")
+        sentences.append(f"Seller reports {issue['code'].replace('_', ' ')} on {issue['region'].replace('_', ' ')}: {_sentence(issue['description'])}")
     if answer == "unknown":
         sentences.append("The seller is unsure about additional issues.")
     record.listing_text_en = " ".join(sentences)
     listing.update(en=record.listing_text_en, publication_status=meta["status"],
                    seller_limitations=limitations, seller_disclosures=deepcopy(meta.get("issues", [])))
+    price = meta.get("asking_price")
+    record.price_band = (price, price) if price else None  # legacy field; never a condition-based estimate
+    record.currency = "INR"
+    listing.update(asking_price=price, currency="INR", price_source="seller" if price else "unset",
+                   negotiation_enabled=meta.get("negotiation_enabled", False))
     guidance = list(coverage.get("guidance", []))
     for issue in meta.get("issues", []):
         guidance.append(f"Unfold the {issue['region'].replace('_', ' ')} area and add a close-up plus a wider context view of the reported {issue['code'].replace('_', ' ')}.")
@@ -160,11 +175,15 @@ def _save_projection(storage, meta):
     # Rebuild translations from the qualified text, never reuse earlier clean prose.
     for key in ("ja", "ko", "zh-TW", "th", "id-ID", "vi", "hi"):
         listing.pop(key, None)
-    try:
-        listing.update(translate(record.listing_text_en))
-    except Exception:
-        # Losing translation must not lose a seller's disclosure or revive stale text.
-        listing["translation_unavailable"] = True
+    previous = storage.get_json("listings", meta["id"]) or {}
+    if previous.get("en") == record.listing_text_en and any(previous.get(k) for k in ("ja", "hi")):
+        listing.update({k: previous[k] for k in ("ja", "ko", "zh-TW", "th", "id-ID", "vi", "hi") if k in previous})
+    else:
+        try:
+            listing.update(translate(record.listing_text_en))
+        except Exception:
+            # Losing translation must not lose a seller's disclosure or revive stale text.
+            listing["translation_unavailable"] = True
     storage.put_json("records", meta["id"], record.model_dump(mode="json"))
     storage.put_json("listings", meta["id"], listing)
 
@@ -174,6 +193,7 @@ def review(storage, item_id):
         meta = _load(storage, item_id)
         record, _, limitations, guidance = _project(storage, meta)
         return {"id": item_id, "status": meta["status"], "revision": meta["revision"],
+            "asking_price": meta.get("asking_price"), "currency": "INR", "negotiation_enabled": meta.get("negotiation_enabled", False),
             "answer": meta.get("answer"), "issues": meta.get("issues", []),
             "record": record.public().model_dump(mode="json"), "limitations": limitations,
             "guidance": guidance, "history": deepcopy(meta["history"]),
@@ -257,11 +277,33 @@ def add_evidence(storage, item_id, revision, video, photos, code):
         return review(storage, item_id)
 
 
+def set_price(storage, item_id, body):
+    with lock(item_id):
+        from .catalog import purchased_items
+        if item_id in purchased_items(storage):
+            raise Conflict("A purchased garment's price cannot be changed.")
+        meta = _load(storage, item_id)
+        if meta["status"] not in ("draft", "published") or meta["revision"] != body.revision:
+            raise Conflict("The listing changed. Reload it before setting its price.")
+        # Published legacy listings can receive their first explicit price.
+        if meta["status"] == "published" and meta.get("asking_price"):
+            raise Conflict("Published prices cannot be edited in this prototype.")
+        storage.put_json("floors", item_id, {"floor": body.minimum_price if body.negotiation_enabled else body.asking_price})
+        meta.update(asking_price=body.asking_price, negotiation_enabled=body.negotiation_enabled, revision=meta["revision"]+1)
+        meta["history"].append({"event": "seller_price_saved", "at": now(), "asking_price": body.asking_price,
+                                "currency": "INR", "negotiation_enabled": body.negotiation_enabled})
+        storage.put_json("seller_drafts", item_id, meta)
+        _save_projection(storage, meta)
+        return review(storage, item_id)
+
+
 def publish(storage, item_id, body: PublishIn):
     with lock(item_id):
         meta = _load(storage, item_id); _editable(meta, body.revision)
         if meta.get("answer") is None:
             raise Conflict("Answer the seller condition question before publishing.")
+        if not meta.get("asking_price"):
+            raise Conflict("Set your asking price in INR before publishing.")
         if not body.acknowledge_limitations:
             raise Conflict("Review and acknowledge the visible limitations before publishing.")
         _, listing, limitations, _ = _project(storage, meta)

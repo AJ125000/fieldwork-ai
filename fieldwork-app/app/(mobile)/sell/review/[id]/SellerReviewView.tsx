@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import { Crop } from "@/components/Crop";
 import { AIActivity } from "@/components/AIActivity";
 import { addSellerEvidence, evidenceUrl, getSellerDraft, itemName, publishSellerDraft, saveSellerDeclarations,
-  words, type SellerDraft, type SellerIssue } from "@/lib/api";
+  saveSellerPrice, sentence, yen, words, type SellerDraft, type SellerIssue } from "@/lib/api";
 import styles from "@/components/Flow.module.css";
 
 const CODES = ["stain", "hole", "tear", "pilling", "fading", "snag", "loose_seam", "missing_button", "broken_zip", "discolour", "other"];
@@ -24,7 +24,11 @@ export function SellerReviewView({ id }: { id: string }) {
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  function adopt(next: SellerDraft) { setDraft(next); setAnswer(next.answer ?? ""); setIssues(next.issues); setAck(false); }
+  const [askingPrice, setAskingPrice] = useState("");
+  const [negotiation, setNegotiation] = useState(false);
+  const [minimum, setMinimum] = useState("");
+  function adopt(next: SellerDraft) { setDraft(next); setAnswer(next.answer ?? ""); setIssues(next.issues); setAck(false);
+    setAskingPrice(next.asking_price ? String(next.asking_price) : ""); setNegotiation(!!next.negotiation_enabled); setMinimum(""); }
   useEffect(() => { getSellerDraft(id).then(adopt).catch(e => setError(e.message)); }, [id]);
   async function action(label: string, fn: () => Promise<SellerDraft>) {
     setBusy(label); setError("");
@@ -39,6 +43,9 @@ export function SellerReviewView({ id }: { id: string }) {
   const published = draft.status === "published";
   const valid = answer !== "" && (answer !== "issues_reported" || (issues.length > 0 && issues.every(i => i.description.trim())));
   const locked = !!busy || published;
+  const priceDirty = Number(askingPrice) !== (draft.asking_price ?? 0) || negotiation !== !!draft.negotiation_enabled || minimum !== "";
+  const priceValid = Number.isInteger(Number(askingPrice)) && Number(askingPrice) > 0 && Number(askingPrice) <= 10000000 &&
+    (!negotiation || (Number.isInteger(Number(minimum)) && Number(minimum) > 0 && Number(minimum) <= Number(askingPrice)));
   function edit(index: number, key: keyof SellerIssue, value: string) {
     setIssues(current => current.map((issue, i) => i === index ? { ...issue, [key]: value } : issue));
   }
@@ -98,12 +105,24 @@ export function SellerReviewView({ id }: { id: string }) {
         }}>Add evidence and reinspect</Button>
       </section>
       <section className={styles.card}>
+        <h2 className="t-heading-s">Your asking price</h2>
+        <p className="t-body-s t-secondary">Set the price in INR. No automatic estimate or currency conversion is used. Condition grades describe the garment only.</p>
+        <label className="t-label" htmlFor="asking-price">Asking price (INR)</label>
+        <input id="asking-price" className={styles.field} type="number" min={1} max={10000000} step={1} inputMode="numeric" value={askingPrice} disabled={!!busy || (published && !!draft.asking_price)} onChange={e => setAskingPrice(e.target.value)} />
+        <label className="t-body-s"><input type="checkbox" checked={negotiation} disabled={!!busy || (published && !!draft.asking_price)} onChange={e => setNegotiation(e.target.checked)} /> Allow negotiation</label>
+        {negotiation && <><label className="t-label" htmlFor="minimum-price">Private minimum acceptable price (INR)</label>
+          <input id="minimum-price" className={styles.field} type="number" min={1} max={Number(askingPrice) || undefined} step={1} value={minimum} disabled={!!busy || (published && !!draft.asking_price)} onChange={e => setMinimum(e.target.value)} placeholder={draft.asking_price ? "Saved privately; enter again to change pricing" : "Only the backend uses this minimum"} />
+          <p className="t-caption t-secondary">Buyers and agents never receive this minimum. Up to five rounds; each quote is valid for 30 minutes.</p></>}
+        {draft.asking_price && <p className="t-body-s">Saved asking price: {yen(draft.asking_price, "INR")}.</p>}
+        <Button disabled={!!busy || (published && !!draft.asking_price) || dirty || !priceDirty || !priceValid} onClick={() => action("Saving seller price…", () => saveSellerPrice(id, draft.revision, Number(askingPrice), negotiation, negotiation ? Number(minimum) : undefined))}>Save asking price</Button>
+      </section>
+      <section className={styles.card}>
         <h2 className="t-heading-s">Limitations buyers will see</h2>
-        <ul>{draft.limitations.map((text, i) => <li key={i} className="t-body-s">{text}</li>)}</ul>
+        <ul className={styles.bullets}>{draft.limitations.map((text, i) => <li key={i} className="t-body-s">{sentence(text)}</li>)}</ul>
         <p className="t-body-s">{draft.record.listing_text_en}</p>
         {!published && <>
           <label className="t-body-s"><input type="checkbox" checked={ack} disabled={locked || dirty} onChange={e => setAck(e.target.checked)} /> I reviewed this draft and understand that seller-reported issues and unresolved limitations will remain visible to buyers.</label>
-          <Button fullWidth disabled={locked || dirty || !draft.answer || !ack} onClick={async () => {
+          <Button fullWidth disabled={locked || dirty || priceDirty || !draft.asking_price || !draft.answer || !ack} onClick={async () => {
             const next = await action("Publishing the reviewed listing…", () => publishSellerDraft(id, draft.revision, ack));
             if (next) router.push(`/pass/${id}`);
           }}>Approve and publish with these limitations</Button>

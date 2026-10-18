@@ -36,13 +36,19 @@ def run_unbox(record: ConditionRecord, video: Path | None = None, photos: list[P
     d = store.item_dir(record.id)
     work = d / work_name
     work.mkdir(parents=True, exist_ok=True)
+    received_labels = {}
     if video is not None:
         src = shutil.copyfile(video, work / ("unbox" + video.suffix.lower()))
         from ..video import validate_video
         validate_video(Path(src))
-        frames = [f.path for f in fr.evidence_candidates(fr.extract_frames(src, work / "frames"), k=10)]
+        selected = fr.evidence_candidates(fr.extract_frames(src, work / "frames"), k=10)
+        frames = [f.path for f in selected]
+        received_labels.update({str(f.path): f"Received video · {f.t:.2f}s · {f.frame_id}" for f in selected})
     else:
         frames = list(photos or [])
+    if video is not None:
+        frames.extend(photos or [])
+    received_labels.update({str(p): f"Received photo {i+1}" for i, p in enumerate(photos or [])})
     for fid in record.capture.frames:
         store.get_file(record.id, f"{fid}.jpg")  # pulls listing frames from GCS on a fresh instance
     listing = {fid: d / f"{fid}.jpg" for fid in record.capture.frames if (d / f"{fid}.jpg").exists()}
@@ -50,7 +56,8 @@ def run_unbox(record: ConditionRecord, video: Path | None = None, photos: list[P
     metadata = store.get_json("listings", record.id) or {}
     masks = reference_masks(metadata.get("capture_coverage", {}), listing)
     res = check(record, listing, pair_frames(listing, frames), work / "crops", seed=seed,
-                reference_masks=masks, require_garment_focus=True)
+                reference_masks=masks, require_garment_focus=True, received_labels=received_labels,
+                listing_labels=metadata.get("frame_sources", {}))
     if len(listing) < len(record.capture.frames):
         res.limitations.append("Some listing evidence files were unavailable.")
         if res.verdict == "consistent":

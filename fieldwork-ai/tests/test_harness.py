@@ -93,9 +93,9 @@ def fake_generate_factory():
             b = cv2.resize(b, (a.shape[1], a.shape[0])) * (a.mean() / max(b.mean(), 1.0))
             blob = cv2.erode((cv2.GaussianBlur(a - b, (0, 0), 2) > 35).astype(np.uint8), np.ones((9, 9), np.uint8))
             bad = bool(blob.any())  # thin misalignment edges vanish under erosion; a filled spot survives
-            return judge.PairVerdict(new_defect=bad, code="stain", severity="minor" if bad else "none", unsure=False, reason="dark spot")
+            return judge.PairVerdict(comparable=True, new_defect=bad, code="stain", severity="minor" if bad else "none", unsure=False, reason="dark spot")
         if task == "unbox_flaw_check":
-            return judge.FlawCheck(still_visible=True, unsure=False, reason="same stain")
+            return judge.FlawCheck(comparable=True, still_visible=True, unsure=False, reason="same stain")
         if task == "flaw_inspect_agentic":
             return SimpleNamespace(text='I zoomed in.\n```json\n{"flaws": [{"code": "stain", "region": "left_cuff", "severity": "minor", "box_2d": [1, 2, 3, 4]}]}\n```')
         if task == "flaw_inspect_plain":
@@ -305,25 +305,25 @@ class TestSeller(Base):
         market.seed_fixtures()
 
     def test_price_rule_never_below_floor(self):
-        from fieldwork.agents import seller
-        band = (3000, 6000)
-        for floor in (None, 2000, 4500, 6000):
-            for offer in (None, 100, 3000, 4400, 4500, 5900, 9000):
-                d = seller.decide_price(band, floor, offer)
-                if d["price"] is not None:
-                    self.assertGreaterEqual(d["price"], max(floor or 0, band[0]))
-                    self.assertLessEqual(d["price"], band[1])
-        self.assertEqual(seller.decide_price(band, 7000, 5000)["status"], "no_deal_in_band")
+        from fieldwork import pricing
+        item = "fx_coat_navy_clean"
+        storage_listing = {"id":item,"price_source":"seller","asking_price":1500,"negotiation_enabled":True,"currency":"INR"}
+        store.put_json("listings",item,storage_listing)
+        store.put_json("floors",item,{"floor":1200})
+        for offer in (100,1000,1199,1200,1300,1500,9000):
+            result=pricing.offer(store,item,offer)
+            self.assertGreaterEqual(result["price"],1200)
+            self.assertLessEqual(result["price"],1500)
 
     def test_tools_and_floor_secrecy(self):
         from fieldwork.agents import seller
         item = "fx_coat_navy_clean"
-        band = tuple(store.get_json("records", item)["price_band"])
-        seller.set_floor(item, band[0] + 500)
-        out = seller.propose_price(item, buyer_offer=100)
-        self.assertGreaterEqual(out["price"], band[0] + 500)
-        self.assertNotIn(str(band[0] + 500), json.dumps({k: v for k, v in out.items() if k != "price"}))
-        self.assertTrue(any(i["item_id"] == item for i in seller.list_items()))
+        store.put_json("listings",item,{"id":item,"price_source":"seller","asking_price":1500,"negotiation_enabled":True,"currency":"INR"})
+        store.put_json("floors",item,{"floor":1200})
+        out=seller.propose_price(item,buyer_offer=1000)
+        self.assertEqual(out["price"],1250)
+        self.assertNotIn("1200",json.dumps(out))
+        self.assertTrue(any(i["id"] == item for i in seller.list_items()))
         with mock.patch("fieldwork.gemini.generate", return_value=SimpleNamespace(answer="No stain shown.", lang="en", state="shown",
                                                                                    claim_ids=[], model_dump=lambda: {"state": "shown"})):
             self.assertIn("state", seller.answer_question(item, "stain?"))

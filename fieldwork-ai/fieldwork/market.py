@@ -5,6 +5,12 @@ from __future__ import annotations
 
 from .spec import Capture, Claim, ConditionRecord, Item, Lane, Severity
 from .store import store
+from .catalog import listing_media, purchase_price, purchased_items
+import re
+
+
+def _normal(value):
+    return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
 def _listing_map() -> dict[str, dict]:
@@ -27,13 +33,17 @@ def _card(r: ConditionRecord, listing: dict) -> dict:
         "id": r.id,
         "item": r.item.model_dump(),
         "grade_set": r.grade_set,
-        "price_band": list(r.price_band) if r.price_band else None,
-        "currency": r.currency,
+        "price_band": [listing["asking_price"]]*2 if listing.get("price_source") == "seller" else None,
+        "currency": listing.get("currency", "INR"),
+        "negotiation_enabled": listing.get("negotiation_enabled", False),
         "shown_flaws": _flaws(r),
         "declared_flaws": _declared_flaws(r),
         "cant_judge": sorted({c.region for c in r.claims if c.lane == Lane.cant_judge}),
         "evidence_badge": badge,
         "summary_line": r.summary_line(),
+        "media": listing_media(store, r, listing),
+        "purchase_price": purchase_price(store, r),
+        "price_source": listing.get("price_source", "unset"),
     }
 
 
@@ -41,21 +51,29 @@ def search(query: dict) -> list[dict]:
     """query keys: type, colour, max_price, min_grade, exclude_defects (list of codes), size_label (or size)."""
     q = {k: v for k, v in (query or {}).items() if v not in (None, "", [])}
     lmap = _listing_map()
+    unavailable = purchased_items(store)
     out = []
     for raw in store.list_json("records"):
         r = ConditionRecord(**raw)
+        if r.id in unavailable:
+            continue
         lifecycle = store.get_json("seller_drafts", r.id)
         if lifecycle is not None and lifecycle.get("status") != "published":
             continue
         if lmap.get(r.id, {}).get("publication_status", "published") != "published":
             continue
-        if "type" in q and q["type"].lower() not in r.item.type.lower():
+        if "type" in q and _normal(q["type"]) not in _normal(r.item.type):
+            continue
+        if "brand" in q and _normal(q["brand"]) not in _normal(r.item.brand or ""):
             continue
         if "colour" in q and q["colour"].lower() not in (r.item.colour or "").lower():
             continue
-        if "max_price" in q and (not r.price_band or r.price_band[0] > q["max_price"]):
+        price = purchase_price(store, r)
+        if "currency" in q and q["currency"].upper() != lmap.get(r.id, {}).get("currency", "INR").upper():
             continue
-        if "min_grade" in q and (not r.grade_set or max(r.grade_set) < q["min_grade"]):
+        if "max_price" in q and (price is None or price > q["max_price"]):
+            continue
+        if "min_grade" in q and (not r.grade_set or min(r.grade_set) < q["min_grade"]):
             continue
         size = q.get("size_label") or q.get("size")
         if size and size.lower() not in (r.item.size_label or "").lower():

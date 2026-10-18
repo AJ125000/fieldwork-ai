@@ -126,10 +126,15 @@ def test_flaw_outside_overlap_is_uncheckable_not_missing(tmp_path,monkeypatch):
     assert result.verdict=='cant_tell' and not result.findings
 
 
-def test_invalid_upload_returns_actionable_api_error():
+def test_invalid_upload_returns_actionable_api_error(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from fieldwork.api import app
-    response=TestClient(app).post('/take',files={'video':('bad.mp4',b'not video','video/mp4')})
+    from fieldwork import api
+    from fieldwork.take import pipeline as take_pipeline
+    from fieldwork.store import LocalStore
+    isolated = LocalStore(tmp_path/'store')
+    monkeypatch.setattr(api, 'store', isolated)
+    monkeypatch.setattr(take_pipeline, 'store', isolated)
+    response=TestClient(api.app).post('/take',files={'video':('bad.mp4',b'not video','video/mp4')})
     assert response.status_code==422 and 'Could not read' in response.json()['detail']
 
 

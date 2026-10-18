@@ -62,11 +62,13 @@ def main():
             draft = call("seller_review", "get", f"/seller/drafts/{item}")
             draft = call("seller_disclosure", "post", f"/seller/drafts/{item}/declarations", json={
                 "revision": draft["revision"], "answer": "unknown", "issues": []})
+            draft = call("seller_price", "post", f"/seller/drafts/{item}/price", json={
+                "revision": draft["revision"], "asking_price": 1500, "currency": "INR"})  # explicit test-actor price
             call("seller_publication_state_check", "post", f"/seller/drafts/{item}/publish", json={
                 "revision": draft["revision"], "acknowledge_limitations": True})
             listing = call("translated_listing", "get", f"/listings/{item}")
             assert all(listing.get(k) for k in ("en", "ja", "ko", "zh-TW", "th", "id-ID", "vi", "hi"))
-            call("public_record", "get", f"/records/{item}")
+            rec = call("public_record", "get", f"/records/{item}")
             found = call("buyer_search", "get", "/search")
             assert item in json.dumps(found)
             call("buyer_evidence_question", "post", "/ask", json={"item_id": item, "question": "Can you establish how this garment smells?"})
@@ -81,7 +83,13 @@ def main():
                 except Exception as exc:
                     result.setdefault("agent_errors", []).append({"stage": stage, "error": str(exc)[:300]})
             mandate_body = {"item_id": item, "payer": "smoke-buyer", "payee": "smoke-seller", "amount": rec["price_band"][1], "currency": rec["currency"]}
-            accepted = call("purchase_accept_branch", "post", "/escrow", json=mandate_body)
+            from fieldwork.store import store
+            accept_item = item + "_accept_control"
+            control_record = store.get_json("records", item); control_record["id"] = accept_item
+            control_listing = store.get_json("listings", item); control_listing["id"] = accept_item
+            store.put_json("records", accept_item, control_record)
+            store.put_json("listings", accept_item, control_listing)
+            accepted = call("purchase_accept_branch", "post", "/escrow", json={**mandate_body, "item_id": accept_item})
             release = call("explicit_buyer_acceptance", "post", f"/escrow/{accepted['id']}/accept")
             assert release["status"] == "released"
             held = call("purchase_issue_branch", "post", "/escrow", json=mandate_body)

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import styles from "./AIMessage.module.css";
+import { FormattedText } from "./FormattedText";
 
 type Props = {
   /** Who is speaking. AI messages are always labelled. */
@@ -25,7 +26,7 @@ export function AIMessage({ from, children, controls }: Props) {
           "You"
         )}
       </p>
-      <div className={`${styles.text} t-body`}>{children}</div>
+      <div className={`${styles.text} t-body`}>{typeof children === "string" ? <FormattedText text={children} /> : children}</div>
       {controls && <div className={styles.controls}>{controls}</div>}
     </div>
   );

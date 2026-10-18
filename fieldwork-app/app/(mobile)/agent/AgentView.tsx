@@ -10,7 +10,8 @@ import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { StatusTag } from "@/components/StatusTag";
 import { TopBar } from "@/components/TopBar";
-import { agentChat, band, createEscrow, gradeRange, rememberMandate, words, yen, type SearchCard, type ToolCall } from "@/lib/api";
+import { ListingMedia } from "@/components/ListingMedia";
+import { agentChat, createEscrow, gradeRange, rememberMandate, words, yen, type Offer, type SearchCard, type ToolCall } from "@/lib/api";
 import styles from "@/components/Flow.module.css";
 
 type Entry =
@@ -52,10 +53,12 @@ const isAnswer = (x: unknown): x is { answer: string; state: string } =>
   typeof x === "object" && x !== null && "answer" in x && "state" in x;
 const isMandate = (x: unknown): x is { id: string; amount: number; currency: string; item_id: string; status: string } =>
   typeof x === "object" && x !== null && "amount" in x && "status" in x && "id" in x;
+const isOffer = (x: unknown): x is Offer => typeof x === "object" && x !== null && "price" in x && "item_id" in x && "status" in x;
 
 function searchLine(a: Record<string, unknown>) {
   const parts: string[] = [];
   if (a.colour) parts.push(String(a.colour));
+  if (a.brand) parts.push(String(a.brand));
   if (a.type) parts.push(String(a.type));
   const ex = Array.isArray(a.exclude_defects) ? (a.exclude_defects as string[]) : [];
   for (const d of ex) parts.push(`no ${words(d)}s`);
@@ -106,26 +109,28 @@ function OptionCard({ c, onConfirm, busy, done }: { c: SearchCard; onConfirm: ()
   const name = [c.item.brand, c.item.colour, c.item.type].filter(Boolean).join(" ");
   return (
     <article className={styles.card} aria-label={name}>
+      <ListingMedia media={c.media ?? []} compact />
       <div className={styles.between}>
         <h3 className="t-heading-s">{name}</h3>
-        <span className="t-num-m">{c.price_band ? yen(c.price_band[0], c.currency) : "—"}</span>
+        <span className="t-num-m">{c.purchase_price ? yen(c.purchase_price, "INR") : "Price not set"}</span>
       </div>
-      <p className="t-body-s">{gradeRange(c.grade_set)} · {band(c.price_band, c.currency)}</p>
+      <p className="t-body-s">{gradeRange(c.grade_set)} · Seller’s asking price{c.negotiation_enabled ? " · offers welcome" : ""}</p>
       <div className={styles.row}>
-        {c.shown_flaws.length === 0 ? <Chip>No flaws shown</Chip> : c.shown_flaws.map((f, i) => <Chip key={i}>{f.severity} {words(f.code)} · {words(f.region)}</Chip>)}
+        {c.shown_flaws.length === 0 ? <Chip>No defect recorded in supplied views</Chip> : c.shown_flaws.map((f, i) => <Chip key={i}>{f.severity} {words(f.code)} · {words(f.region)}</Chip>)}
+        {c.declared_flaws?.map((f, i) => <Chip key={`declared-${i}`}>Seller reports {words(f.code)} · {words(f.region)}</Chip>)}
       </div>
       {c.cant_judge.length > 0 && <p className={`${styles.meta} t-meta`}>Can&rsquo;t judge from the take: {c.cant_judge.map(words).join(", ")}</p>}
       <div className={styles.row}>
-        <Button variant="secondary" size="md" href={`/pass/${c.id}`}>Open the Pass</Button>
-        <Button size="md" loading={busy} disabled={done || !c.price_band} onClick={onConfirm}>
-          {done ? "Escrow held" : `Confirm · hold ${c.price_band ? yen(c.price_band[0], c.currency) : ""}`}
+        <Button variant="secondary" size="md" href={`/pass/${c.id}`}>View listing, photos and video</Button>
+        <Button size="md" loading={busy} disabled={done || !c.purchase_price} onClick={onConfirm}>
+          {done ? "Escrow held" : `Confirm · hold ${c.purchase_price ? yen(c.purchase_price, "INR") : ""}`}
         </Button>
       </div>
     </article>
   );
 }
 
-const SUGGESTIONS = ["Navy wool coat, no stains, under ¥6,000", "A black jacket in M with no snags", "Jeans with no holes"];
+const SUGGESTIONS = ["Show me Celio t-shirts", "A black jacket in M", "Jeans under ₹1,500"];
 
 export function AgentView() {
   const [log, setLog] = useState<Entry[]>([]);
@@ -172,10 +177,10 @@ export function AgentView() {
   }
 
   async function confirm(c: SearchCard) {
-    if (!c.price_band) return;
+    if (!c.purchase_price) return;
     setEscrowBusy(c.id);
     try {
-      const md = await createEscrow(c.id, c.price_band[0], c.currency);
+      const md = await createEscrow(c.id, c.purchase_price, "INR");
       rememberMandate(c.id, md);
       setLog((l) => [...l, { kind: "escrow", text: `Escrow held ${yen(md.amount, md.currency)}`, itemId: c.id }]);
     } catch (e) {
@@ -186,6 +191,16 @@ export function AgentView() {
   }
 
   const held = new Set(log.flatMap((e) => (e.kind === "escrow" ? [e.itemId] : [])));
+
+  async function confirmQuote(quote: Offer) {
+    setEscrowBusy(quote.item_id);
+    try {
+      const md = await createEscrow(quote.item_id, quote.price, "INR", quote.quote_id);
+      rememberMandate(quote.item_id, md);
+      setLog(l => [...l, { kind: "escrow", text: `Escrow held ${yen(md.amount, md.currency)}`, itemId: quote.item_id }]);
+    } catch (e) { setLog(l => [...l, { kind: "error", text: e instanceof Error ? e.message : "Purchase failed." }]); }
+    finally { setEscrowBusy(""); }
+  }
 
   return (
     <>
@@ -214,9 +229,14 @@ export function AgentView() {
                 </div>
               );
             const cards = e.call.tool === "search_garments" ? dig(e.call.result, isCards) : undefined;
+            const quote = e.call.tool === "propose_price" ? dig(e.call.result, isOffer) : undefined;
             return (
               <div key={i} className={styles.section}>
                 <ToolRow call={e.call} />
+                {quote?.price && <div className={styles.card}>
+                  <p>Seller {quote.status === "counter" ? "counteroffer" : "price"}: {yen(quote.price, "INR")}.</p>
+                  <Button disabled={held.has(quote.item_id)} loading={escrowBusy === quote.item_id} onClick={() => confirmQuote(quote)}>Confirm purchase · hold {yen(quote.price, "INR")}</Button>
+                </div>}
                 {cards?.slice(0, 3).map((c) => (
                   <OptionCard key={c.id} c={c} busy={escrowBusy === c.id} done={held.has(c.id)} onConfirm={() => confirm(c)} />
                 ))}
@@ -240,7 +260,7 @@ export function AgentView() {
             className={styles.field}
             rows={2}
             value={text}
-            placeholder="Navy wool coat, no stains, under ¥6,000"
+            placeholder="For example: Celio t-shirt under ₹1,500"
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -254,7 +274,7 @@ export function AgentView() {
           </Button>
         </form>
         <p className="t-caption t-quiet">
-          Prefer to look yourself? <Link href="/pass/fx_coat_navy_clean">Open a sample Pass</Link>.
+          Open a result above to see the seller’s photos, video and asking price. <Link href="/help">Track an issue</Link>.
         </p>
       </main>
       <BottomNav />

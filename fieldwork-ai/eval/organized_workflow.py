@@ -92,13 +92,15 @@ def main():
                 draft = call('seller_review', 'get', f'/seller/drafts/{item}')
                 assert item not in json.dumps(call('draft_hidden', 'get', '/search'))
                 purchase = {'item_id': item, 'payer': 'regression-buyer', 'payee': 'regression-seller',
-                            'amount': rec['price_band'][1], 'currency': rec['currency']}
+                            'amount': 1500, 'currency': 'INR'}
                 call('draft_purchase_blocked', 'post', '/escrow', expected=409, json=purchase)
                 disclosed = [{'code': c, 'region': r, 'description': d} for c, r, d in issues.get(folder.name, [])]
                 draft = call('seller_disclosure', 'post', f'/seller/drafts/{item}/declarations', json={
                     'revision': draft['revision'], 'answer': 'issues_reported' if disclosed else 'none_known', 'issues': disclosed})
                 assert len([c for c in draft['record']['claims'] if c['id'].startswith('seller_issue_') and c['lane'] == 'declared']) == len(disclosed)
                 row['seller_review'] = draft
+                draft = call('seller_price', 'post', f'/seller/drafts/{item}/price', json={
+                    'revision': draft['revision'], 'asking_price': 1500, 'currency': 'INR'})  # explicit test actor
                 call('scripted_publication', 'post', f'/seller/drafts/{item}/publish', json={
                     'revision': draft['revision'], 'acknowledge_limitations': True})
                 row['listing'] = call('published_listing', 'get', f'/listings/{item}')
@@ -106,7 +108,12 @@ def main():
                 row['answer'] = call('buyer_evidence_question', 'post', '/ask', json={
                     'item_id': item, 'question': 'Can you establish how this garment smells from these captures?'})
                 assert row['answer']['state'] == 'cant_judge'
-                accepted = call('purchase_accept_branch', 'post', '/escrow', json=purchase)
+                accept_item = item + '_accept_control'
+                control_record = store.get_json('records', item); control_record['id'] = accept_item
+                control_listing = store.get_json('listings', item); control_listing['id'] = accept_item
+                store.put_json('records', accept_item, control_record)
+                store.put_json('listings', accept_item, control_listing)
+                accepted = call('purchase_accept_branch', 'post', '/escrow', json={**purchase, 'item_id': accept_item})
                 assert call('explicit_all_good', 'post', f"/escrow/{accepted['id']}/accept")['status'] == 'released'
                 held = call('purchase_issue_branch', 'post', '/escrow', json=purchase)
                 row['mandate_id'] = held['id']

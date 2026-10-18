@@ -74,7 +74,7 @@ def test_supplementary_photo_reaches_drafter_and_is_retained(tmp_path,monkeypatc
     frame=tmp_path/'overview.jpg';cv2.imwrite(str(frame),np.full((100,100,3),100,np.uint8))
     monkeypatch.setattr('fieldwork.video.validate_video',lambda path:1.)
     monkeypatch.setattr(pipeline.fr,'extract_frames',lambda *a:[])
-    monkeypatch.setattr(pipeline.fr,'evidence_candidates',lambda *a,**k:[SimpleNamespace(path=frame)])
+    monkeypatch.setattr(pipeline.fr,'evidence_candidates',lambda *a,**k:[SimpleNamespace(path=frame,t=0.)])
     seen=[]
     def draft(video,frames):
         seen.extend(fid for fid,_ in frames)

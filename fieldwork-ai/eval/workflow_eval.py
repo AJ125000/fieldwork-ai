@@ -104,6 +104,8 @@ def main():
                              for f in truth.known_flaws]
                 draft = call("seller_disclosure", "post", f"/seller/drafts/{item}/declarations", json={
                     "revision": draft["revision"], "answer": "issues_reported" if disclosed else "unknown", "issues": disclosed})
+                draft = call("seller_price", "post", f"/seller/drafts/{item}/price", json={
+                    "revision": draft["revision"], "asking_price": 1500, "currency": "INR"})  # explicit test-actor price
                 call("seller_publication_state_check", "post", f"/seller/drafts/{item}/publish", json={
                     "revision": draft["revision"], "acknowledge_limitations": True})
                 record = call("published_record", "get", f"/records/{item}")
@@ -122,7 +124,13 @@ def main():
                                      json={"session_id": item + path.replace("/", "_"), "message": message})
                         assert reply.get("text") and reply.get("tool_calls")
                 purchase = {"item_id": item, "payer": "eval-buyer", "payee": "eval-seller", "amount": record["price_band"][1], "currency": record["currency"]}
-                accepted = call("purchase_accept", "post", "/escrow", json=purchase)
+                from fieldwork.store import store
+                accept_item = item + "_accept_control"
+                control_record = store.get_json("records", item); control_record["id"] = accept_item
+                control_listing = store.get_json("listings", item); control_listing["id"] = accept_item
+                store.put_json("records", accept_item, control_record)
+                store.put_json("listings", accept_item, control_listing)
+                accepted = call("purchase_accept", "post", "/escrow", json={**purchase, "item_id": accept_item})
                 assert call("all_good", "post", f"/escrow/{accepted['id']}/accept")["status"] == "released"
                 mandate = call("purchase_issue", "post", "/escrow", json=purchase)
                 issue = call("issue_inspection", "post", "/issues", data={"item_id": item, "mandate_id": mandate["id"],

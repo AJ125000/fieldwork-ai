@@ -23,11 +23,6 @@ from .record import draft_record, to_claims, coverage_report
 
 LANGS = {"ja": "Japanese", "ko": "Korean", "zh-TW": "Traditional Chinese", "th": "Thai", "id-ID": "Indonesian", "vi": "Vietnamese", "hi": "Hindi"}
 
-# Rough resale bands (JPY) by garment type at grade 5; scaled down by grade. Labelled as an estimate.
-BASE_JPY = {"jacket": 6000, "coat": 8000, "jeans": 3500, "trousers": 3000, "dress": 4000, "shirt": 2500, "top": 2000,
-            "t-shirt": 1500, "hoodie": 3000, "sweater": 3000, "skirt": 2500}
-
-
 class Translations(BaseModel):
     ja: str
     ko: str
@@ -36,12 +31,6 @@ class Translations(BaseModel):
     id: str
     vi: str
     hi: str
-
-
-def _price_band(item_type: str, grade_set: list[int]) -> tuple[int, int]:
-    base = BASE_JPY.get(item_type.lower(), 2500)
-    lo, hi = min(grade_set or [3]), max(grade_set or [3])
-    return int(base * (0.35 + 0.13 * lo) // 100 * 100), int(base * (0.35 + 0.13 * hi) // 100 * 100)
 
 
 def translate(text_en: str) -> dict[str, str]:
@@ -64,6 +53,7 @@ def run_take(video: Path | None, code: str | None, photos: list[Path] | None = N
     item_id = item_id or f"g_{uuid.uuid4().hex[:8]}"
     d = store.item_dir(item_id)
     prefix = f"{attempt_id}_" if attempt_id else ""
+    frame_sources = {}
 
     if video is not None:
         from ..video import validate_video
@@ -74,6 +64,7 @@ def run_take(video: Path | None, code: str | None, photos: list[Path] | None = N
         kept = []
         for i, f in enumerate(chosen):
             fid = f"{prefix}f{i + 1}"
+            frame_sources[fid] = f"Seller video · {f.t:.2f}s · {fid}"
             shutil.copyfile(f.path, d / f"{fid}.jpg")
             kept.append((fid, d / f"{fid}.jpg"))
     else:
@@ -81,6 +72,7 @@ def run_take(video: Path | None, code: str | None, photos: list[Path] | None = N
         kept = []
         for i, p in enumerate(photos or []):
             fid = f"{prefix}p{i + 1}"
+            frame_sources[fid] = f"Seller photo {i+1} · {fid}"
             shutil.copyfile(p, d / f"{fid}.jpg")
             kept.append((fid, d / f"{fid}.jpg"))
 
@@ -89,6 +81,7 @@ def run_take(video: Path | None, code: str | None, photos: list[Path] | None = N
     if video is not None:
         for i, path in enumerate(photos or []):
             fid = f"{prefix}p{i + 1}"
+            frame_sources[fid] = f"Seller photo {i+1} · {fid}"
             shutil.copyfile(path, d / f"{fid}.jpg")
             kept.append((fid, d / f"{fid}.jpg"))
 
@@ -112,13 +105,13 @@ def run_take(video: Path | None, code: str | None, photos: list[Path] | None = N
         item=draft.item,
         claims=claims,
         grade_set=[int(x) for x in g["condition"]["set"]],
-        price_band=_price_band(draft.item.type, g["condition"]["set"]),
+        price_band=None, currency="INR",
         capture=Capture(code_expected=code or "none", code_seen=code_seen, take_sha256=digest, frames=[fid for fid, _ in kept]),
         listing_text_en=draft.listing_text_en,
     )
     listing = {"id": item_id, "en": draft.listing_text_en, **(translate(draft.listing_text_en) if translate_listing else {}),
                "model_grade": g, "evidence_badge": "strong" if (video and code_seen) else "basic",
-               "capture_coverage": coverage, "publication_status": "draft"}
+               "capture_coverage": coverage, "frame_sources": frame_sources, "publication_status": "draft"}
     store.sync_item(item_id)  # no-op locally; uploads frames/video to GCS in the cloud
     store.put_json("listings", item_id, listing)
     store.put_json("records", item_id, record.model_dump(mode="json"))

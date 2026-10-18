@@ -20,7 +20,6 @@ from .spec import Box, Capture, Claim, ConditionRecord, Item, Lane, Severity
 from .store import store
 
 PARQUET = config.DATA_DIR / "hf" / "data" / "test-00000-of-00001.parquet"
-SEK_JPY = 14  # rough conversion; an estimate, shown as such
 
 # (row index in parquet, our type, colour override). Order = d_01..d_24.
 PICKS = [
@@ -33,7 +32,6 @@ PICKS = [
     (2110, "sweater", None), (2695, "sweater", None),
 ]
 _MAT = {"bomull": "cotton", "viskos": "viscose", "polyamid": "polyamide", "elastan": "elastane", "ull": "wool"}
-_BUCKET = {"<50": (10, 50), "50-100": (50, 100), "100-150": (100, 150), "150-250": (150, 250), "250-400": (250, 400)}
 _SEV = {"Minor": Severity.minor, "Major": Severity.major}
 
 
@@ -108,8 +106,6 @@ def seed_demo(n: int = 24) -> list[str]:
             Claim(id="cj_back", lane=Lane.cant_judge, code="back_not_photographed", region="back", note="Only the front was photographed"),
         ]
 
-        lo, hi = _BUCKET.get(str(row.price), (10, 50))
-        band = (lo * SEK_JPY, hi * SEK_JPY)
         g_txt = f"{min(grade_set)}-{max(grade_set)}" if len(grade_set) > 1 else str(grade_set[0])
         text = " ".join(filter(None, [
             f"{(brand + ' ') if brand else ''}{colour or ''} {typ}".replace("  ", " ").strip().capitalize() + ".",
@@ -119,14 +115,14 @@ def seed_demo(n: int = 24) -> list[str]:
             "Front photo only.",
         ]))
         rec = ConditionRecord(
-            id=iid, item=item, claims=claims, grade_set=grade_set, price_band=band,
+            id=iid, item=item, claims=claims, grade_set=grade_set, price_band=None, currency="INR",
             capture=Capture(code_expected="DEMO", code_seen=False, take_sha256=hashlib.sha256(raw).hexdigest(),
                             frames=["f1", "f2", "f3"]),
             listing_text_en=text)
         store.put_json("records", iid, rec.model_dump(mode="json"))
         store.put_json("listings", iid, {
             "id": iid, "en": text, "translations": "pending", "evidence_badge": "basic", "fixture": True, "demo": True,
-            "price_note": f"Estimate: SEK bucket {row.price} at ~{SEK_JPY} JPY/SEK", "source_row": int(idx)})
+            "price_source": "unset", "currency": "INR", "source_row": int(idx)})
         ids.append(iid)
     return ids
 

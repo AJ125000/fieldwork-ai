@@ -10,7 +10,9 @@ import { Crop } from "@/components/Crop";
 import { EvidenceBadge } from "@/components/EvidenceBadge";
 import { StatusTag } from "@/components/StatusTag";
 import { TopBar } from "@/components/TopBar";
-import { ask, band, getListing, getRecord, gradeRange, itemName, recordUrl, words, type Answer, type Claim, type ConditionRecord, type Lane, type Listing } from "@/lib/api";
+import { ListingMedia } from "@/components/ListingMedia";
+import { PurchaseControls } from "@/components/PurchaseControls";
+import { ask, getListing, getRecord, gradeRange, itemName, recordUrl, sentence, words, yen, type Answer, type Claim, type ConditionRecord, type Lane, type Listing } from "@/lib/api";
 import type { EvidenceState } from "@/lib/mock";
 import styles from "@/components/Flow.module.css";
 
@@ -96,12 +98,25 @@ export function PassView({ id }: { id: string }) {
           </div>
         </section>
 
-        <section className={styles.dark} aria-label="Grade and price">
+        <section className={styles.section} aria-label="Seller photos and video">
+          <h2 className="t-heading-s">Seller photos and video</h2>
+          <ListingMedia media={listing?.media ?? []} />
+        </section>
+
+        <section className={styles.dark} aria-label="Condition grade">
           <p className="t-overline">Grade range from our model</p>
           <h2 className="t-num-l">{gradeRange(rec.grade_set)}</h2>
           <p className={`${styles.quiet} t-body-s`}>Estimated from the take only. A range, not a promise.</p>
-          <p className="t-overline" style={{ marginTop: "var(--fw-space-3)" }}>Price band</p>
-          <p className="t-num-m">{band(rec.price_band, rec.currency)}</p>
+        </section>
+
+        <section className={styles.card} aria-label="Seller price and purchase">
+          <h2 className="t-heading-s">Seller’s asking price</h2>
+          <p className="t-num-m">{listing?.asking_price ? yen(listing.asking_price, "INR") : "Not set"}</p>
+          <p className="t-body-s t-secondary">Set by the seller. Condition grades do not determine the price.</p>
+          {listing?.publication_status === "draft" ? <Button href={`/sell/review/${id}`}>Review seller draft</Button> : listing?.purchase_available === false ?
+            <><p className="t-body-s">This garment has an existing purchase.</p><Button variant="secondary" href={`/unbox/${id}`}>Open delivery and review status</Button></> :
+            <PurchaseControls itemId={id} askingPrice={listing?.purchase_price ?? null} negotiationEnabled={listing?.negotiation_enabled} />}
+          {listing?.seller_managed && listing?.purchase_available !== false && listing?.publication_status !== "draft" && !listing?.purchase_price && <Button variant="secondary" href={`/sell/review/${id}`}>Seller: set asking price</Button>}
         </section>
 
         <section className={styles.section} aria-labelledby="listing-h">
@@ -115,10 +130,10 @@ export function PassView({ id }: { id: string }) {
               ))}
             </ChipGroup>
           )}
-          <p className="t-body" lang={lang}>{listingText || "No listing text."}</p>
+          <p className="t-body" lang={lang}>{listingText ? sentence(listingText) : "No listing text."}</p>
           {!!listing?.seller_limitations?.length && <div className={styles.card}>
             <h3 className="t-heading-s">Unresolved limitations</h3>
-            <ul>{listing.seller_limitations.map((text, i) => <li className="t-body-s" key={i}>{text}</li>)}</ul>
+            <ul className={styles.bullets}>{listing.seller_limitations.map((text, i) => <li className="t-body-s" key={i}>{sentence(text)}</li>)}</ul>
           </div>}
         </section>
 
@@ -168,7 +183,7 @@ export function PassView({ id }: { id: string }) {
             <p className="t-body-s t-secondary">{listing.capture_coverage.limitation}</p>
           </>}
           <p className="t-body-s">
-            {uncovered.length ? `No evidence crop for: ${uncovered.map(words).join(", ")}.` : "Every main region has an evidence crop."} Anything outside the 12-second take is unknown, not fine.
+            {uncovered.length ? `No evidence crop for: ${uncovered.map(words).join(", ")}.` : "Every main region has an evidence crop."} Details outside the supplied photos and video remain unknown.
           </p>
         </section>
 

@@ -49,7 +49,7 @@ def test_new_capture_is_hidden_and_cannot_be_purchased(setup):
     client,storage,_=setup;item=capture(client)
     assert client.get('/search').json()==[]
     with pytest.raises(ValueError,match='review and publish'):
-        escrow.create(item,'buyer','seller',200,'JPY')
+        escrow.create(item,'buyer','seller',200,'INR')
     draft=client.get(f'/seller/drafts/{item}').json()
     assert draft['status']=='draft' and draft['revision']==1
     assert 'Guaranteed' not in draft['record']['listing_text_en']
@@ -72,6 +72,7 @@ def test_hidden_disclosure_stays_declared_after_reinspection_and_publication(set
     assert claim['lane']=='declared' and claim['evidence']==[]
     assert any('reported hole' in text for text in draft['guidance'])
     assert client.get('/search').json()==[]
+    draft=client.post(f'/seller/drafts/{item}/price',json={'revision':draft['revision'],'asking_price':200}).json()
     response=client.post(f'/seller/drafts/{item}/publish',json={'revision':draft['revision'],'acknowledge_limitations':True})
     assert response.status_code==200
     assert client.get('/search').json()[0]['id']==item
@@ -80,7 +81,7 @@ def test_hidden_disclosure_stays_declared_after_reinspection_and_publication(set
     assert listing['publication_status']=='published'
     assert 'hidden under a fold' in listing['en'] and 'hidden under a fold' in listing['ja']
     assert listing['seller_limitations']
-    assert escrow.create(item,'buyer','seller',200,'JPY').status=='held'
+    assert escrow.create(item,'buyer','seller',200,'INR').status=='held'
 
 
 def test_publication_requires_answer_acknowledgment_and_current_revision(setup):
@@ -90,6 +91,8 @@ def test_publication_requires_answer_acknowledgment_and_current_revision(setup):
     draft=disclosure(client,item).json()
     assert client.post(path,json={'revision':draft['revision']}).status_code==409
     assert client.post(path,json={'revision':1,'acknowledge_limitations':True}).status_code==409
+    assert client.post(path,json={'revision':draft['revision'],'acknowledge_limitations':True}).status_code==409
+    draft=client.post(f'/seller/drafts/{item}/price',json={'revision':draft['revision'],'asking_price':200}).json()
     assert client.post(path,json={'revision':draft['revision'],'acknowledge_limitations':True}).status_code==200
     assert disclosure(client,item,revision=draft['revision']+1).status_code==409
 

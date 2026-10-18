@@ -143,6 +143,15 @@ def change_regions(ref_path: str | Path, aligned_path: str | Path, valid_mask: n
     return sorted(regions, key=lambda r: -r.score)[:top_k]
 
 
+def comparable_box(mask: np.ndarray, box: list[int], pad: float = 0.15) -> bool:
+    h, w = mask.shape
+    y0, x0, y1, x1 = box
+    dy, dx = (y1-y0)*pad, (x1-x0)*pad
+    area = mask[int(max(0,y0-dy)*h/1000):int(np.ceil(min(1000,y1+dy)*h/1000)),
+                int(max(0,x0-dx)*w/1000):int(np.ceil(min(1000,x1+dx)*w/1000))]
+    return bool(area.size and np.mean(area > 0) >= .95)
+
+
 def crop_pair(ref_path: str | Path, aligned_path: str | Path, box_2d: list[int], pad: float = 0.15,
               out_dir: str | Path = ".") -> tuple[Path, Path]:
     if not valid_box(box_2d):
@@ -151,8 +160,10 @@ def crop_pair(ref_path: str | Path, aligned_path: str | Path, box_2d: list[int],
     out.mkdir(parents=True, exist_ok=True)
     ref = cv2.imread(str(ref_path))
     new = cv2.imread(str(aligned_path))
+    if ref is None or new is None:
+        raise ValueError("Comparison image could not be read")
     if new.shape[:2] != ref.shape[:2]:
-        new = cv2.resize(new, (ref.shape[1], ref.shape[0]), interpolation=cv2.INTER_AREA)
+        raise ValueError("Comparison images must already share the aligned coordinate system")
     h, w = ref.shape[:2]
     y0, x0, y1, x1 = box_2d
     ph, pw = (y1 - y0) * pad, (x1 - x0) * pad

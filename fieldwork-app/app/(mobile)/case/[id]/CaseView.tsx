@@ -33,7 +33,7 @@ export function CaseView({ id }: { id: string }) {
   async function submit(clip: Blob | null) {
     if (!report) return;
     setBusy(true); setError("");
-    try { setReport(await addIssueEvidence(report.id, clip, clip ? undefined : photos)); setPhotos([]); }
+    try { setReport(await addIssueEvidence(report.id, clip, photos.length ? photos : undefined)); setPhotos([]); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not add evidence."); }
     finally { setBusy(false); }
   }
