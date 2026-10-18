@@ -26,6 +26,11 @@ app.add_middleware(CORSMiddleware, allow_origins=[*[o for o in os.getenv("FW_COR
                    allow_methods=["*"], allow_headers=["*"])
 
 
+from .request_gate import install_mutation_gate
+
+install_mutation_gate(app)
+
+
 def _record(item_id: str) -> ConditionRecord:
     raw = store.get_json("records", item_id)
     if raw is None:

@@ -22,21 +22,24 @@ export function UnboxView({ id }: { id: string }) {
   const [photos, setPhotos] = useDraftState<File[]>(`fw.unbox.${id}.photos`, [], false);
   const [busy, setBusy] = useDraftState(`fw.unbox.${id}.busy`, false, false);
   const [ready, setReady] = useState(false);
+  const [refresh, setRefresh] = useState(0);
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useDraftState(`fw.unbox.${id}.error`, "");
   const confirmation = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     let live = true;
+    setReady(false);
+    setError("");
     const known = new URLSearchParams(window.location.search).get("m") ?? recallMandate(id)?.id ?? null;
     setMid(known);
     Promise.all([getRecord(id), getIssues(id), known ? getEscrow(known) : Promise.resolve(null)]).then(([r, issues, m]) => {
       if (!live) return;
       if (m && m.item_id !== id) throw new Error("This escrow belongs to another garment. Open the correct purchase.");
-      setRec(r); setReport((known ? issues.find(issue => issue.mandate_id === known) : issues[0]) ?? null); setMandate(m); setReady(true);
+      setRec(r); setReport((known ? issues.find(issue => issue.mandate_id === known) : issues[0]) ?? null); setMandate(m); setReady(true); setError("");
     }).catch((e: Error) => { if (live) setError(e.message); });
     return () => { live = false; };
-  }, [id]);
+  }, [id, refresh]);
 
   useEffect(() => {
     if (!report?.id) return;
@@ -67,7 +70,7 @@ export function UnboxView({ id }: { id: string }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not submit your issue.");
       // Recover a queued report if the request completed but its response was lost.
-      try { const reports = await getIssues(id); const queued = mid ? reports.find(r => r.mandate_id === mid) : reports[0]; if (queued) setReport(queued); } catch {}
+      try { const reports = await getIssues(id); const queued = mid ? reports.find(r => r.mandate_id === mid) : reports[0]; if (queued) { setReport(queued); setError(""); } } catch {}
     } finally { setBusy(false); }
   }
 
@@ -80,7 +83,7 @@ export function UnboxView({ id }: { id: string }) {
         <h1 className="t-heading-m">{rec ? itemName(rec) : "Your garment"}</h1>
         {mandate && <p className="t-body-s">Simulated payment {yen(mandate.amount, mandate.currency)} · {paymentStatusText(mandate.status)}</p>}
       </section>
-      {error && <p className={styles.err} role="alert">{error}</p>}
+      {error && <div className={styles.err} role="alert"><p>{error}</p><Button variant="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh purchase status</Button></div>}
       {busy && <AIActivity title={mode === "issue" ? "Preparing evidence for a human reviewer…" : "Recording your acceptance…"} variant="plain" />}
       {!ready && !error && <p className="t-body-s">Loading your purchase…</p>}
       {accepted ? <section className={styles.card} role="status">

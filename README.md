@@ -64,7 +64,7 @@ gcloud auth login && gcloud auth application-default login
 python deploy_google_cloud.py --project YOUR_PROJECT_ID --region asia-southeast1
 ```
 
-This enables the required APIs and creates the runtime service account, bucket, Firestore database and the Secret Manager reviewer token. It then deploys `fieldwork-api` (4 GiB, one instance, one request at a time, because payment state uses process-local locks) and `fieldwork-web`, and sets CORS. It prints the URLs and writes the reviewer key to `fieldwork-ai/.env.review`, which is git-ignored.
+This enables the required APIs and creates the runtime service account, bucket, Firestore database and the Secret Manager reviewer token. It then deploys `fieldwork-api` (4 GiB, one instance, up to 16 concurrent requests, with state-changing requests serialized in the application) and `fieldwork-web`, and sets CORS. It prints the URLs and writes the reviewer key to `fieldwork-ai/.env.review`, which is git-ignored.
 
 ## Code and documentation
 

@@ -70,10 +70,10 @@ def main():
     run("secrets", "versions", "add", secret, "--data-file=-", input_text=token, capture=True)
     run("secrets", "add-iam-policy-binding", secret, f"--member=serviceAccount:{runtime}",
         "--role=roles/secretmanager.secretAccessor", capture=True)
-    # Prototype payment state uses process-local locks. Keep one worker and one request at a time.
+    # One worker/instance; the application serializes mutations while allowing concurrent reads.
     run("run", "deploy", "fieldwork-api", "--source=" + str(ROOT / "fieldwork-ai"),
         "--region=" + args.region, "--service-account=" + runtime, "--memory=4Gi", "--cpu=2",
-        "--concurrency=1", "--max-instances=1", "--min-instances=1", "--timeout=600",
+        "--concurrency=16", "--max-instances=1", "--min-instances=1", "--timeout=600",
         "--allow-unauthenticated", "--set-secrets=FW_REVIEW_TOKEN=" + secret + ":latest",
         "--set-env-vars=" + ",".join(("FW_USE_VERTEX=1", "FW_GCP_PROJECT=" + args.project,
             "FW_GCP_LOCATION=global", "FW_STORE=cloud", "FW_BUCKET=" + bucket, "FW_WORK_DIR=/tmp/fieldwork")))
