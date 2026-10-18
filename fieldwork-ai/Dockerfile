@@ -11,7 +11,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY fieldwork ./fieldwork
 COPY models ./models
 # Bake model weights into the image so cold starts don't download them.
-RUN uv run python -c "from transformers import AutoModel, AutoProcessor; \
+RUN uv run --no-sync python -c "from transformers import AutoModel, AutoProcessor; \
 [(AutoProcessor.from_pretrained(m), AutoModel.from_pretrained(m)) for m in ('google/siglip2-base-patch16-224',)]; \
 from transformers import AutoImageProcessor; AutoImageProcessor.from_pretrained('facebook/dinov2-small'); AutoModel.from_pretrained('facebook/dinov2-small')"
 

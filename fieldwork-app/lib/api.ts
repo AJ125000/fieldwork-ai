@@ -149,6 +149,10 @@ function videoName(b?: Blob | null) {
   return b && b.type.includes("mp4") ? "take.mp4" : "take.webm";
 }
 function form(fields: Record<string, string>, video?: Blob | null, photos?: File[]) {
+  const uploadBytes = (video?.size ?? 0) + (photos ?? []).reduce((sum, photo) => sum + photo.size, 0);
+  if (API_BASE.includes(".run.app") && uploadBytes > 30 * 1024 * 1024) {
+    throw new ApiError(413, "The cloud demo accepts up to 30 MiB of photos and video combined. Choose a shorter clip or fewer photos.");
+  }
   const f = new FormData();
   for (const [k, v] of Object.entries(fields)) f.append(k, v);
   if (video) f.append("video", video, videoName(video));

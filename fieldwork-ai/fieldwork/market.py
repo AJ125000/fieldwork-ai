@@ -141,6 +141,7 @@ def seed_fixtures() -> list[str]:
         if media.is_dir():  # tracked fixture photos -> item store (store/ is gitignored)
             for f in media.glob("*.jpg"):
                 shutil.copyfile(f, store.item_dir(rec["id"]) / f.name)
+            store.sync_item(rec["id"])
         store.put_json("records", rec["id"], rec)
         store.put_json("listings", rec["id"], lst)
     return [r["id"] for r, _ in fx]
