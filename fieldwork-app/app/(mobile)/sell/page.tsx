@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ImagePlus } from "lucide-react";
 import { AIActivity, type ActivityItem } from "@/components/AIActivity";
@@ -8,6 +8,8 @@ import { BottomNav } from "@/components/BottomNav";
 import { Button } from "@/components/Button";
 import { CameraCapture } from "@/components/CameraCapture";
 import { TopBar } from "@/components/TopBar";
+import { readDraftState, useDraftState } from "@/lib/useDraftState";
+import { SavedListings } from "@/components/SavedListings";
 import { postTake } from "@/lib/api";
 import styles from "@/components/Flow.module.css";
 
@@ -21,16 +23,20 @@ function newCode() {
 
 export default function SellPage() {
   const router = useRouter();
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState(0);
-  const [error, setError] = useState("");
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [code, setCode] = useDraftState("fw.sell.code", "");
+  const [busy, setBusy] = useDraftState("fw.sell.busy", false, false);
+  const [step, setStep] = useDraftState("fw.sell.step", 0, false);
+  const [error, setError] = useDraftState("fw.sell.error", "");
+  const [photos, setPhotos] = useDraftState<File[]>("fw.sell.photos", [], false);
+  const [videoFile, setVideoFile] = useDraftState<File | null>("fw.sell.video", null, false);
+  const [resultId, setResultId] = useDraftState("fw.sell.result", "");
+  const mounted = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    setCode(newCode());
+    if (!readDraftState("fw.sell.code", "")) setCode(newCode());
+    mounted.current = true;
+    return () => { mounted.current = false; };
   }, []);
   useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
 
@@ -41,12 +47,14 @@ export default function SellPage() {
     timer.current = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 6000);
     try {
       const rec = await postTake(clip ? code : "", clip, files);
-      router.push(`/sell/review/${encodeURIComponent(rec.id)}`);
+      setResultId(rec.id); setPhotos([]); setVideoFile(null);
+      if (mounted.current) router.push(`/sell/review/${encodeURIComponent(rec.id)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setBusy(false);
     } finally {
       if (timer.current) clearInterval(timer.current);
+      setBusy(false);
     }
   }
 
@@ -56,6 +64,11 @@ export default function SellPage() {
     <>
       <TopBar title="One Take" backHref="/" titleAs="h1" />
       <main className={styles.main}>
+        {resultId && <section className={styles.card}><h2 className="t-heading-s">Your last garment draft is saved</h2>
+          <Button href={`/sell/review/${resultId}`} variant="secondary">Continue reviewing your garment</Button>
+          <Button variant="tertiary" onClick={() => { setResultId(""); setCode(newCode()); }}>Start another capture</Button>
+        </section>}
+        <SavedListings />
         {busy ? (
           <AIActivity title="Making your Garment Pass…" items={items} source="Source · your take" />
         ) : (
@@ -97,6 +110,7 @@ export default function SellPage() {
                 aria-label="Choose three or more photos"
                 onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
               />
+              {photos.length > 0 && <p className="t-body-s">Selected photos: {photos.map(file => file.name).join(", ")}</p>}
               <Button
                 variant="secondary"
                 fullWidth

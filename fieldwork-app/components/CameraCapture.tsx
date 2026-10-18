@@ -26,6 +26,8 @@ export function CameraCapture({ seconds, onRecorded, overlay, idleText, recordLa
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
+  const mounted = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [on, setOn] = useState(false);
   const [left, setLeft] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -35,12 +37,21 @@ export function CameraCapture({ seconds, onRecorded, overlay, idleText, recordLa
     streamRef.current = null;
     setOn(false);
   }, []);
-  useEffect(() => stop, [stop]);
+  useEffect(() => { mounted.current = true; return () => {
+    mounted.current = false;
+    if (timerRef.current) clearInterval(timerRef.current);
+    const recorder = recRef.current;
+    // Leaving a route must stop camera access without uploading a partial clip.
+    if (recorder) { recorder.onstop = null; if (recorder.state !== "inactive") recorder.stop(); }
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+  }; }, []);
 
   async function start() {
     setError("");
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      if (!mounted.current) { s.getTracks().forEach(track => track.stop()); return; }
       streamRef.current = s;
       setOn(true);
       requestAnimationFrame(() => {
@@ -70,11 +81,11 @@ export function CameraCapture({ seconds, onRecorded, overlay, idleText, recordLa
     rec.start();
     setLeft(seconds);
     const t0 = Date.now();
-    const tick = setInterval(() => {
+    timerRef.current = setInterval(() => {
       const remaining = Math.max(0, seconds - Math.floor((Date.now() - t0) / 1000));
       setLeft(remaining);
       if (remaining <= 0) {
-        clearInterval(tick);
+        if (timerRef.current) clearInterval(timerRef.current);
         if (rec.state !== "inactive") rec.stop();
       }
     }, 250);

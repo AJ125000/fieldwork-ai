@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { BottomNav } from "@/components/BottomNav";
@@ -9,6 +9,7 @@ import { Crop } from "@/components/Crop";
 import { AIActivity } from "@/components/AIActivity";
 import { addSellerEvidence, evidenceUrl, getSellerDraft, itemName, publishSellerDraft, saveSellerDeclarations,
   saveSellerPrice, sentence, yen, words, type SellerDraft, type SellerIssue } from "@/lib/api";
+import { readDraftState, useDraftState } from "@/lib/useDraftState";
 import styles from "@/components/Flow.module.css";
 
 const CODES = ["stain", "hole", "tear", "pilling", "fading", "snag", "loose_seam", "missing_button", "broken_zip", "discolour", "other"];
@@ -16,20 +17,29 @@ const REGIONS = ["whole", "front", "back", "collar", "left_sleeve", "right_sleev
 
 export function SellerReviewView({ id }: { id: string }) {
   const router = useRouter();
-  const [draft, setDraft] = useState<SellerDraft | null>(null);
-  const [answer, setAnswer] = useState<NonNullable<SellerDraft["answer"]> | "">("");
-  const [issues, setIssues] = useState<SellerIssue[]>([]);
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [video, setVideo] = useState<File | null>(null);
-  const [ack, setAck] = useState(false);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  const [askingPrice, setAskingPrice] = useState("");
-  const [negotiation, setNegotiation] = useState(false);
-  const [minimum, setMinimum] = useState("");
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [draft, setDraft] = useDraftState<SellerDraft | null>(`fw.seller.${id}.draft`, null);
+  const [answer, setAnswer] = useDraftState<NonNullable<SellerDraft["answer"]> | "">(`fw.seller.${id}.answer`, "");
+  const [issues, setIssues] = useDraftState<SellerIssue[]>(`fw.seller.${id}.issues`, []);
+  const [photos, setPhotos] = useDraftState<File[]>(`fw.seller.${id}.photos`, [], false);
+  const [video, setVideo] = useDraftState<File | null>(`fw.seller.${id}.video`, null, false);
+  const [ack, setAck] = useDraftState(`fw.seller.${id}.ack`, false, false);
+  const [busy, setBusy] = useDraftState(`fw.seller.${id}.busy`, "", false);
+  const [error, setError] = useDraftState(`fw.seller.${id}.error`, "");
+  const [askingPrice, setAskingPrice] = useDraftState(`fw.seller.${id}.askingPrice`, "");
+  const [negotiation, setNegotiation] = useDraftState(`fw.seller.${id}.negotiation`, false);
+  const [minimum, setMinimum] = useDraftState(`fw.seller.${id}.minimum`, "", false);
   function adopt(next: SellerDraft) { setDraft(next); setAnswer(next.answer ?? ""); setIssues(next.issues); setAck(false);
     setAskingPrice(next.asking_price ? String(next.asking_price) : ""); setNegotiation(!!next.negotiation_enabled); setMinimum(""); }
-  useEffect(() => { getSellerDraft(id).then(adopt).catch(e => setError(e.message)); }, [id]);
+  useEffect(() => { getSellerDraft(id).then(next => {
+    const previous = readDraftState<SellerDraft | null>(`fw.seller.${id}.draft`, null);
+    if (!previous) adopt(next);
+    else {
+      setDraft(next); // preserve unsaved fields when returning to this route
+      if (previous.revision !== next.revision) { setAck(false); setError("The saved listing changed while you were away. Review your retained edits before saving."); }
+    }
+  }).catch(e => setError(e.message)); }, [id]);
   async function action(label: string, fn: () => Promise<SellerDraft>) {
     setBusy(label); setError("");
     try { const next = await fn(); adopt(next); return next; }
@@ -98,6 +108,7 @@ export function SellerReviewView({ id }: { id: string }) {
         <input id="seller-closeups" type="file" className={styles.field} accept="image/*" multiple disabled={locked} onChange={e => setPhotos(Array.from(e.target.files ?? []))} />
         <label className="t-label" htmlFor="seller-retake">Optional new video</label>
         <input id="seller-retake" type="file" className={styles.field} accept="video/*" disabled={locked} onChange={e => setVideo(e.target.files?.[0] ?? null)} />
+        {(photos.length > 0 || video) && <p className="t-body-s">Selected evidence: {[...photos.map(file => file.name), ...(video ? [video.name] : [])].join(", ")}</p>}
         <p className="t-body-s t-secondary">Unfold the relevant area. Include a close-up and a wider view with a nearby seam or pocket. Earlier evidence is preserved. Save any changed disclosures first.</p>
         <Button variant="secondary" disabled={locked || dirty || (!photos.length && !video)} onClick={async () => {
           const next = await action("Inspecting additional evidence…", () => addSellerEvidence(id, draft.revision, photos, video));
@@ -124,7 +135,7 @@ export function SellerReviewView({ id }: { id: string }) {
           <label className="t-body-s"><input type="checkbox" checked={ack} disabled={locked || dirty} onChange={e => setAck(e.target.checked)} /> I reviewed this draft and understand that seller-reported issues and unresolved limitations will remain visible to buyers.</label>
           <Button fullWidth disabled={locked || dirty || priceDirty || !draft.asking_price || !draft.answer || !ack} onClick={async () => {
             const next = await action("Publishing the reviewed listing…", () => publishSellerDraft(id, draft.revision, ack));
-            if (next) router.push(`/pass/${id}`);
+            if (next && mounted.current) router.push(`/pass/${id}`);
           }}>Approve and publish with these limitations</Button>
         </>}
         {published && <Button href={`/pass/${id}`}>Open published Pass</Button>}

@@ -1,5 +1,16 @@
 # Contract changes — 14 October 2026
 
+### Purchase recovery and route-state persistence — 18 October 2026
+
+`GET /purchases` returns shared prototype mandate summaries joined to garment details and the exact attached issue, sorted newest first, omitting signatures, private minima and missing-record test artifacts. `GET /seller/drafts` adds resumable listing summaries without private pricing limits. Existing purchase creation/settlement semantics and Store/ConditionRecord interfaces are unchanged. Production still requires authenticated ownership scopes for both history endpoints.
+
+The frontend now uses a route-independent external draft store. Serializable conversation/form state is mirrored to browser-tab session storage; file objects, busy flags, private minimum entries and reviewer credentials are memory-only. Async request setters remain valid after a route unmounts, so navigation does not discard a completed response. Buyer session IDs survive navigation/reload, but backend ADK conversation memory still does not survive a backend restart. Restoring UI text is not durable server-side chat memory.
+
+Buy shows saved purchases recovered from the backend even if the browser has lost its mandate IDs; Sell shows resumable listings. Bottom navigation remembers the last route in each flow. Seller review refreshes server state without overwriting retained unsaved inputs; changed revisions invalidate acknowledgement and show a review message. Upload completion saves a resume link and redirects only while its originating page is still mounted. Camera cleanup detaches the stop handler, cancels its timer and stops tracks so leaving cannot upload a partial recording. A pending camera-permission result is also cleaned up after unmount.
+
+Validation: 49 focused backend checks, seven frontend state-store checks, frontend production build/typecheck, and actual browser navigation/reload exercises. The saved ₹400 xFisics sweatpants purchase (`md_6c55a5ccb5`) remains held. No duplicate purchase, buyer acceptance, issue submission or payment settlement was performed during browser verification.
+
+
 ### Local workflow audit and seller-defined INR pricing — 18 October 2026
 
 Automatic condition/type-based prices and SEK/JPY demo conversions are removed. `POST /seller/drafts/{id}/price` saves an explicit INR asking price and optional negotiation minimum. The private minimum remains solely in backend `floors` storage. Publication now requires a price; published legacy seller-managed listings can set their first explicit price. ConditionRecord retains `price_band` for compatibility, populated only as `(asking, asking)` for current listings; its default currency is INR. Public legacy records have no price until the seller sets one. No automatic migration of old funded mandates is performed.

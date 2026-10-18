@@ -158,6 +158,38 @@ def search(type: str | None = None, colour: str | None = None, max_price: int | 
                           "brand": brand, "currency": currency})
 
 
+@app.get("/purchases")
+def purchases():
+    """Shared prototype history. Production must scope this to the signed-in buyer."""
+    reports = reviews.list_reports()
+    result = []
+    for mandate in store.list_json("mandates"):
+        raw = store.get_json("records", mandate["item_id"])
+        if raw is None:
+            continue  # old test mandates may have no remaining garment record
+        record = ConditionRecord(**raw)
+        report = next((r for r in reports if r.mandate_id == mandate["id"]), None)
+        result.append({k: mandate[k] for k in ("id", "item_id", "amount", "currency", "status")})
+        result[-1].update(item=record.item.model_dump(),
+                         created_at=next((e.get("t", 0) for e in mandate.get("events", []) if e.get("event") == "held"), 0),
+                         issue_id=report.id if report else None, issue_status=report.status if report else None)
+    return sorted(result, key=lambda m: m["created_at"], reverse=True)
+
+
+@app.get("/seller/drafts")
+def seller_drafts():
+    """Resumable listings in the shared prototype, without private price limits."""
+    result = []
+    for meta in store.list_json("seller_drafts"):
+        raw = store.get_json("records", meta["id"])
+        if raw is None:
+            continue
+        result.append({"id": meta["id"], "status": meta["status"], "item": raw["item"],
+                       "asking_price": meta.get("asking_price"), "currency": "INR",
+                       "updated_at": (meta.get("history") or [{}])[-1].get("at", "")})
+    return sorted(result, key=lambda row: row["updated_at"], reverse=True)
+
+
 class AskIn(BaseModel):
     item_id: str
     question: str

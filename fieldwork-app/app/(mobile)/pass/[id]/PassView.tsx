@@ -14,6 +14,7 @@ import { ListingMedia } from "@/components/ListingMedia";
 import { PurchaseControls } from "@/components/PurchaseControls";
 import { ask, getListing, getRecord, gradeRange, itemName, recordUrl, sentence, words, yen, type Answer, type Claim, type ConditionRecord, type Lane, type Listing } from "@/lib/api";
 import type { EvidenceState } from "@/lib/mock";
+import { useDraftState } from "@/lib/useDraftState";
 import styles from "@/components/Flow.module.css";
 
 const LANES: { lane: Lane; title: string; blurb: string; state: EvidenceState; label: string }[] = [
@@ -34,11 +35,11 @@ export function PassView({ id }: { id: string }) {
   const [rec, setRec] = useState<ConditionRecord | null>(null);
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState("");
-  const [lang, setLang] = useState("en");
-  const [q, setQ] = useState("");
-  const [asking, setAsking] = useState(false);
-  const [answer, setAnswer] = useState<{ q: string; a: Answer } | null>(null);
-  const [askErr, setAskErr] = useState("");
+  const [lang, setLang] = useDraftState(`fw.pass.${id}.lang`, "en");
+  const [q, setQ] = useDraftState(`fw.pass.${id}.q`, "");
+  const [asking, setAsking] = useDraftState(`fw.pass.${id}.asking`, false, false);
+  const [answer, setAnswer] = useDraftState<{ q: string; a: Answer } | null>(`fw.pass.${id}.answer`, null);
+  const [askErr, setAskErr] = useDraftState(`fw.pass.${id}.askErr`, "");
 
   useEffect(() => {
     getRecord(id).then(setRec).catch((e: Error) => setError(e.message));
@@ -86,7 +87,7 @@ export function PassView({ id }: { id: string }) {
 
   return (
     <>
-      <TopBar title="Garment Pass" backHref="/" titleAs="p" />
+      <TopBar title="Garment Pass" backHref="/agent" titleAs="p" />
       <main className={styles.main}>
         <section className={styles.section} aria-labelledby="pass-title">
           {listing?.publication_status === "draft" && <p className="t-body-s">Seller draft · not available for purchase. <a href={`/sell/review/${id}`}>Review and publish</a></p>}

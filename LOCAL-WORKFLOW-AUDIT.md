@@ -74,3 +74,14 @@ The evaluator sets explicit test-actor prices ₹1,500 / ₹1,200 and reuses the
 No full new 15-garment model evaluation was run during this audit. Previous 15-case results predate these correspondence changes and remain historical. The live received test reuses the source image, rather than testing an independently captured delivery. Rejecting the reported bad alignment demonstrates that case's guard, not accurate alignment recovery or improved hole/stain recall. There is no new damage precision/recall, independent received-session accuracy, model retraining, human decision-quality assessment or cloud deployment claim.
 
 Strict correspondence checks may increase `cant_tell` and add a Gemini call for a geometrically plausible view. Clear matched-region captures are still needed. Browser testing covered representative search/media/status paths; it does not establish every mobile device, video codec or camera permission flow. Shared Help history and unauthenticated seller/quote ownership are prototype limitations, not multi-user production access controls.
+
+
+## Follow-up: saved ₹400 purchase and lost tab progress
+
+The xFisics charcoal sweatpants purchase was already durable: mandate `md_6c55a5ccb5`, item `g_0ca8a31bf3`, INR 400, status held. The missing UI came from component-local confirmation state and the absence of a purchase-history view. It was not a failed or missing escrow.
+
+Added shared-prototype purchase/listing history endpoints, Saved purchases on Buy, Saved listings/resume links on Sell, and route-independent form/conversation state. Navigation now returns to the last screen in each flow. Serializable drafts use browser-tab session storage; selected media, private minimum entries, reviewer tokens and in-flight flags stay in memory. Leaving the camera stops access without uploading a partial clip. A pending API response updates the draft store even while its page is unmounted.
+
+Browser checks confirmed: the INR 400 held purchase appears in history and opens the matching delivery page; unsent buyer text survives Buy → Sell → Buy; a real buyer model response completes while Sell is open and remains on return; three selected photos survive navigation; an unsaved seller asking price survives departure/return without a backend price change; buyer conversation survives a page reload; and an unsent received-issue description survives navigation. Temporary test edits were not submitted. No new purchase, acceptance, issue or settlement was created.
+
+49 focused backend checks and seven frontend state-store checks pass; the frontend production build/typecheck passes. This is UI-state persistence, not durable background jobs: full reloads require reselecting media/re-entering memory-only inputs, and a backend restart still loses ADK's in-memory conversation context. History is shared until account/ownership authorization is implemented.

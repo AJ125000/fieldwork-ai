@@ -1,17 +1,17 @@
 "use client";
-import { useState } from "react";
 import { createEscrow, makeOffer, rememberMandate, yen, type Offer } from "@/lib/api";
 import { Button } from "./Button";
+import { useDraftState } from "@/lib/useDraftState";
 import styles from "./Flow.module.css";
 
 export function PurchaseControls({ itemId, askingPrice, negotiationEnabled = false }: {
   itemId: string; askingPrice: number | null; negotiationEnabled?: boolean;
 }) {
-  const [amount, setAmount] = useState("");
-  const [offer, setOffer] = useState<Offer | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [held, setHeld] = useState(false);
-  const [error, setError] = useState("");
+  const [amount, setAmount] = useDraftState(`fw.purchase.${itemId}.amount`, "");
+  const [offer, setOffer] = useDraftState<Offer | null>(`fw.purchase.${itemId}.offer`, null);
+  const [busy, setBusy] = useDraftState(`fw.purchase.${itemId}.busy`, false, false);
+  const [held, setHeld] = useDraftState(`fw.purchase.${itemId}.held`, false, false);
+  const [error, setError] = useDraftState(`fw.purchase.${itemId}.error`, "");
   async function purchase(price: number, quoteId?: string) {
     setBusy(true); setError("");
     try { const mandate = await createEscrow(itemId, price, "INR", quoteId); rememberMandate(itemId, mandate); setHeld(true); }

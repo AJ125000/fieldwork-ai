@@ -45,6 +45,8 @@ Public SigLIP 2 and DINOv2-small checkpoints download to the Hugging Face cache 
 
 The seller sets the asking price in INR; automatic price estimates and demo currency conversions are removed. Negotiation is optional, bounded to five rounds per negotiation, and uses backend rules. A negotiated quote expires after 30 minutes and must be explicitly confirmed. An existing estimated band is not a purchase price: older seller-managed listings need an explicit asking price.
 
+The Buy page includes saved purchases recovered from the backend, and Sell includes saved listings with resume links. Conversations, unsent text, per-garment form edits and navigation destinations survive tab switches. Serializable drafts also use browser-tab session storage; selected files and private minimum inputs stay in memory and must be reselected/re-entered after a full page reload. Active camera recordings stop without submitting when leaving a route.
+
 Open `/help` for pending reports and issue history. The local prototype history is shared; buyer ownership authentication remains unfinished. Existing funded test mandates keep their original amounts/currencies and are not converted.
 
 See [the local workflow audit](LOCAL-WORKFLOW-AUDIT.md) for the ten reported issues, fixes, evidence and remaining limitations.

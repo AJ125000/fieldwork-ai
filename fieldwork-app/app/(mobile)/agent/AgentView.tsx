@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowUp, FileSearch, Landmark, MessageCircleQuestion, ScrollText } from "lucide-react";
 import { AIActivity } from "@/components/AIActivity";
@@ -11,6 +11,8 @@ import { Chip } from "@/components/Chip";
 import { StatusTag } from "@/components/StatusTag";
 import { TopBar } from "@/components/TopBar";
 import { ListingMedia } from "@/components/ListingMedia";
+import { PurchaseHistory } from "@/components/PurchaseHistory";
+import { readDraftState, useDraftState } from "@/lib/useDraftState";
 import { agentChat, createEscrow, gradeRange, rememberMandate, words, yen, type Offer, type SearchCard, type ToolCall } from "@/lib/api";
 import styles from "@/components/Flow.module.css";
 
@@ -133,17 +135,17 @@ function OptionCard({ c, onConfirm, busy, done }: { c: SearchCard; onConfirm: ()
 const SUGGESTIONS = ["Show me Celio t-shirts", "A black jacket in M", "Jeans under ₹1,500"];
 
 export function AgentView() {
-  const [log, setLog] = useState<Entry[]>([]);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [escrowBusy, setEscrowBusy] = useState("");
-  const session = useRef("");
+  const [log, setLog] = useDraftState<Entry[]>("fw.buy.log", []);
+  const [text, setText] = useDraftState("fw.buy.text", "");
+  const [busy, setBusy] = useDraftState("fw.buy.busy", false, false);
+  const [escrowBusy, setEscrowBusy] = useDraftState("fw.buy.escrowBusy", "", false);
+  const [session, setSession] = useDraftState("fw.buy.session", "");
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    session.current = `s_${Math.random().toString(36).slice(2, 10)}`;
+    if (!readDraftState("fw.buy.session", "")) setSession(`s_${crypto.randomUUID()}`);
     const item = new URLSearchParams(window.location.search).get("item");
-    if (item) setText(`Tell me about garment ${item}: what is shown, and what is not?`);
+    if (item && !readDraftState("fw.buy.text", "")) setText(`Tell me about garment ${item}: what is shown, and what is not?`);
   }, []);
   useEffect(() => {
     if (log.length) end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -156,7 +158,7 @@ export function AgentView() {
     setLog((l) => [...l, { kind: "you", text: m }]);
     setBusy(true);
     try {
-      const r = await agentChat(session.current, m);
+      const r = await agentChat(session, m);
       const next: Entry[] = r.tool_calls.map((call) => ({ kind: "tool", call }));
       for (const c of r.tool_calls) {
         if (c.tool === "create_escrow") {
@@ -207,6 +209,7 @@ export function AgentView() {
       <TopBar title="Shopping agent" backHref="/" titleAs="h1" />
       <main className={styles.main}>
         <p className="t-body-s t-secondary">Tell your agent what you want in one sentence. It searches by evidence and asks the garment. After purchase, accept the delivery or raise an issue for human review while escrow stays held.</p>
+        <PurchaseHistory />
 
         <div className={styles.chat} aria-live="polite">
           {log.length === 0 && (
@@ -274,7 +277,7 @@ export function AgentView() {
           </Button>
         </form>
         <p className="t-caption t-quiet">
-          Open a result above to see the seller’s photos, video and asking price. <Link href="/help">Track an issue</Link>.
+          Open a result above to see the seller’s photos, video and asking price. <a href="#purchases-title">Saved purchases</a> · <Link href="/help">Track an issue</Link>.
         </p>
       </main>
       <BottomNav />

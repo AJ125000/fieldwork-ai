@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useDraftState } from "@/lib/useDraftState";
 import { Button } from "@/components/Button";
 import { IssueReportView, assessmentLabel } from "@/components/IssueReportView";
 import { Wordmark } from "@/components/Logo";
@@ -9,16 +9,16 @@ import flow from "@/components/Flow.module.css";
 import styles from "./review.module.css";
 
 export default function ReviewPage() {
-  const [token, setToken] = useState("");
-  const [reports, setReports] = useState<IssueReport[]>([]);
-  const [selected, setSelected] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [choice, setChoice] = useState<HumanDecision["action"] | "">("");
-  const [pct, setPct] = useState(0);
-  const [name, setName] = useState("");
-  const [note, setNote] = useState("");
+  const [token, setToken] = useDraftState("fw.reviewer.token", "", false);
+  const [reports, setReports] = useDraftState<IssueReport[]>("fw.reviewer.reports", [], false);
+  const [selected, setSelected] = useDraftState("fw.reviewer.selected", "", false);
+  const [loaded, setLoaded] = useDraftState("fw.reviewer.loaded", false, false);
+  const [busy, setBusy] = useDraftState("fw.reviewer.busy", false, false);
+  const [error, setError] = useDraftState("fw.reviewer.error", "", false);
+  const [choice, setChoice] = useDraftState<HumanDecision["action"] | "">("fw.reviewer.choice", "", false);
+  const [pct, setPct] = useDraftState("fw.reviewer.pct", 0, false);
+  const [name, setName] = useDraftState("fw.reviewer.name", "", false);
+  const [note, setNote] = useDraftState("fw.reviewer.note", "", false);
   const report = reports.find(r => r.id === selected);
 
   function select(id: string) { setSelected(id); setChoice(""); setPct(0); setNote(""); }

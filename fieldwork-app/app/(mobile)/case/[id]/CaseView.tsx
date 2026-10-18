@@ -8,14 +8,15 @@ import { CameraCapture } from "@/components/CameraCapture";
 import { IssueReportView } from "@/components/IssueReportView";
 import { TopBar } from "@/components/TopBar";
 import { addIssueEvidence, getIssues, type IssueReport } from "@/lib/api";
+import { useDraftState } from "@/lib/useDraftState";
 import styles from "@/components/Flow.module.css";
 
 export function CaseView({ id }: { id: string }) {
   const [report, setReport] = useState<IssueReport | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [photos, setPhotos] = useDraftState<File[]>(`fw.case.${id}.photos`, [], false);
+  const [busy, setBusy] = useDraftState(`fw.case.${id}.busy`, false, false);
+  const [error, setError] = useDraftState(`fw.case.${id}.error`, "");
 
   useEffect(() => {
     let live = true;
@@ -49,12 +50,14 @@ export function CaseView({ id }: { id: string }) {
         <Button href={`/unbox/${id}`}>Check received garment</Button>
       </section>}
       {report && <IssueReportView report={report} />}
+      <Button variant="secondary" href="/help">All issue reports</Button>
       {busy && <AIActivity title="Adding evidence to your report…" variant="plain" />}
       {report?.status === "needs_evidence" && !busy && <section className={styles.section}>
         <h2 className="t-heading-s">Add the requested evidence</h2>
         <CameraCapture seconds={8} recordLabel="Record a close-up" idleText="Follow the reviewer's request above." onRecorded={clip => submit(clip)} />
         <label className="t-label" htmlFor="more-photos">Or upload photos</label>
         <input id="more-photos" className={styles.field} type="file" accept="image/*" multiple onChange={e => setPhotos(Array.from(e.target.files ?? []))} />
+        {photos.length > 0 && <p className="t-body-s">Selected photos: {photos.map(file => file.name).join(", ")}</p>}
         <Button disabled={!photos.length} onClick={() => submit(null)}>Send additional photos</Button>
       </section>}
     </main>

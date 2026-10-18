@@ -108,6 +108,11 @@ export type Mandate = {
   status: "held" | "released" | "refunded" | "partial" | string;
   events: Record<string, unknown>[];
 };
+export type Purchase = Pick<Mandate, "id" | "item_id" | "amount" | "currency" | "status"> & {
+  item: ConditionRecord["item"]; created_at: number; issue_id: string | null; issue_status: string | null;
+};
+export type SavedListing = { id: string; status: string; item: ConditionRecord["item"];
+  asking_price: number | null; currency: string; updated_at: string };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -156,13 +161,18 @@ export const getListing = (id: string) => call<Listing>(`/listings/${encodeURICo
 export const recordUrl = (id: string) => `${API_BASE}/records/${encodeURIComponent(id)}`;
 export const ask = (item_id: string, question: string) => call<Answer>("/ask", json({ item_id, question }));
 export const agentChat = (session_id: string, message: string) => call<AgentReply>("/agent/chat", json({ session_id, message }));
-export const createEscrow = (item_id: string, amount: number, currency = "INR", quote_id?: string) =>
-  call<Mandate>("/escrow", json({ item_id, payer: "buyer", amount, currency, quote_id }));
+export const createEscrow = async (item_id: string, amount: number, currency = "INR", quote_id?: string) => {
+  const mandate = await call<Mandate>("/escrow", json({ item_id, payer: "buyer", amount, currency, quote_id }));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("fw-purchases-updated"));
+  return mandate;
+};
 export type Offer = { status: string; price: number; currency: string; item_id: string;
   quote_id?: string; negotiation_id?: string; round?: number; max_rounds?: number; note?: string };
 export const makeOffer = (item_id: string, amount: number, negotiation_id = "") =>
   call<Offer>("/offers", json({ item_id, amount, negotiation_id }));
 export const getEscrow = (id: string) => call<Mandate>(`/escrow/${encodeURIComponent(id)}`);
+export const getPurchases = () => call<Purchase[]>("/purchases");
+export const getSellerDrafts = () => call<SavedListing[]>("/seller/drafts");
 export const acceptDelivery = (id: string) => call<Mandate>(`/escrow/${encodeURIComponent(id)}/accept`, json({}));
 export const getIssues = (itemId?: string) => call<IssueReport[]>(itemId ? `/issues?item_id=${encodeURIComponent(itemId)}` : "/issues");
 export const getIssue = (id: string) => call<IssueReport>(`/issues/${encodeURIComponent(id)}`);

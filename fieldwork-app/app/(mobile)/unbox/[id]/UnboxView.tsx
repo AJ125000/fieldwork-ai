@@ -8,6 +8,7 @@ import { CameraCapture } from "@/components/CameraCapture";
 import { IssueReportView } from "@/components/IssueReportView";
 import { TopBar } from "@/components/TopBar";
 import { acceptDelivery, getEscrow, getIssues, getRecord, itemName, recallMandate, rememberMandate, submitIssue, yen, type ConditionRecord, type IssueReport, type Mandate } from "@/lib/api";
+import { useDraftState } from "@/lib/useDraftState";
 import styles from "@/components/Flow.module.css";
 
 export function UnboxView({ id }: { id: string }) {
@@ -15,13 +16,13 @@ export function UnboxView({ id }: { id: string }) {
   const [mandate, setMandate] = useState<Mandate | null>(null);
   const [mid, setMid] = useState<string | null>(null);
   const [report, setReport] = useState<IssueReport | null>(null);
-  const [mode, setMode] = useState<"choose" | "issue">("choose");
-  const [text, setText] = useState("");
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useDraftState<"choose" | "issue">(`fw.unbox.${id}.mode`, "choose");
+  const [text, setText] = useDraftState(`fw.unbox.${id}.text`, "");
+  const [photos, setPhotos] = useDraftState<File[]>(`fw.unbox.${id}.photos`, [], false);
+  const [busy, setBusy] = useDraftState(`fw.unbox.${id}.busy`, false, false);
   const [ready, setReady] = useState(false);
   const [accepted, setAccepted] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useDraftState(`fw.unbox.${id}.error`, "");
 
   useEffect(() => {
     let live = true;
@@ -97,6 +98,7 @@ export function UnboxView({ id }: { id: string }) {
         <CameraCapture seconds={12} recordLabel="Record received garment" idleText="Hold the camera steady with good light." onRecorded={clip => submit(clip)} />
         <label htmlFor="received-photos" className="t-label">Or upload received-garment photos</label>
         <input id="received-photos" className={styles.field} type="file" accept="image/*" multiple onChange={e => setPhotos(Array.from(e.target.files ?? []))} />
+        {photos.length > 0 && <p className="t-body-s">Selected photos: {photos.map(file => file.name).join(", ")}</p>}
         <Button fullWidth disabled={!photos.length} onClick={() => submit(null)}>Submit photos for human review</Button>
         <Button variant="tertiary" onClick={() => setMode("choose")}>Back</Button>
       </section>)}
